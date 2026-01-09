@@ -1,1148 +1,1507 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GLB Animation & Bone Editor</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            overflow: hidden;
-            background: #1a1a2e;
-            font-family: system-ui, -apple-system, sans-serif;
-        }
-        
-        #canvas-container {
-            width: 100vw;
-            height: 100vh;
-        }
-        
-        #ui {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 100;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        #file-input-label {
-            background: #4a4a8a;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background 0.2s;
-            text-align: center;
-        }
-        
-        #file-input-label:hover {
-            background: #5a5a9a;
-        }
-        
-        #file-input {
-            display: none;
-        }
-        
-        .control-btn {
-            background: #2a8a4a;
-            border: none;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-        
-        .control-btn:hover {
-            background: #3a9a5a;
-        }
-        
-        #play-pause-btn.paused {
-            background: #8a4a2a;
-        }
-        
-        #play-pause-btn.paused:hover {
-            background: #9a5a3a;
-        }
-        
-        #toggle-skeleton-btn {
-            background: #6a4a8a;
-        }
-        
-        #toggle-skeleton-btn:hover {
-            background: #7a5a9a;
-        }
-        
-        #toggle-skeleton-btn.hidden {
-            background: #4a4a5a;
-        }
-        
-        #info {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.85);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            max-width: 400px;
-        }
-        
-        #info h3 {
-            margin-bottom: 8px;
-            color: #8a8aff;
-        }
-        
-        #animations-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        
-        .anim-btn {
-            background: #3a3a6a;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s;
-        }
-        
-        .anim-btn:hover {
-            background: #5a5aaa;
-        }
-        
-        .anim-btn.active {
-            background: #6a6aff;
-        }
-        
-        /* Bone Editor Panel */
-        #bone-panel {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            width: 320px;
-            max-height: calc(100vh - 40px);
-            overflow-y: auto;
-            z-index: 100;
-        }
-        
-        #bone-panel h3 {
-            color: #ff8a6a;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        #bone-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #444;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        
-        .bone-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #333;
-            transition: all 0.15s;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .bone-item::before {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #4a9aff;
-            flex-shrink: 0;
-        }
-        
-        .bone-item:hover {
-            background: #3a3a5a;
-        }
-        
-        .bone-item.selected {
-            background: #ff6a4a;
-            color: white;
-            font-weight: 500;
-        }
-        
-        .bone-item.selected::before {
-            background: #ffff00;
-            box-shadow: 0 0 8px #ffff00;
-        }
-        
-        /* Twist bones styling */
-        .bone-item.twist-bone {
-            opacity: 0.5;
-            font-style: italic;
-        }
-        
-        .bone-item.twist-bone::before {
-            background: #666;
-        }
-        
-        .bone-item.twist-bone::after {
-            content: '(twist)';
-            font-size: 10px;
-            color: #888;
-            margin-left: auto;
-        }
-        
-        .bone-item:last-child {
-            border-bottom: none;
-        }
-        
-        #rotation-controls {
-            display: none;
-            flex-direction: column;
-            gap: 12px;
-        }
-        
-        #rotation-controls.visible {
-            display: flex;
-        }
-        
-        #rotation-controls h4 {
-            color: #6af;
-            margin-bottom: 5px;
-        }
-        
-        .rotation-axis {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .rotation-axis label {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-        }
-        
-        .rotation-axis label span.axis-label {
-            font-weight: bold;
-            width: 20px;
-        }
-        
-        .rotation-axis label span.axis-label.x { color: #ff6b6b; }
-        .rotation-axis label span.axis-label.y { color: #6bff6b; }
-        .rotation-axis label span.axis-label.z { color: #6b6bff; }
-        
-        .rotation-axis input[type="range"] {
-            flex: 1;
-            margin: 0 10px;
-            accent-color: #6a6aff;
-        }
-        
-        .rotation-axis input[type="number"] {
-            width: 70px;
-            background: #2a2a4a;
-            border: 1px solid #444;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
-        #reset-bone-btn {
-            background: #6a3a3a;
-            border: none;
-            color: white;
-            padding: 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            margin-top: 10px;
-            transition: background 0.2s;
-        }
-        
-        #reset-bone-btn:hover {
-            background: #8a4a4a;
-        }
-        
-        #selected-bone-name {
-            background: #2a2a4a;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-weight: 500;
-            color: #ff8a6a;
-            text-align: center;
-        }
-        
-        #loading {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 18px;
-            display: none;
-            text-align: center;
-        }
-        
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #333;
-            border-top-color: #6a6aff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        #no-bones-msg {
-            color: #888;
-            font-style: italic;
-            padding: 20px;
-            text-align: center;
-        }
-        
-        /* Legend */
-        #skeleton-legend {
-            margin-top: 15px;
-            padding: 10px;
-            background: #2a2a3a;
-            border-radius: 6px;
-            font-size: 12px;
-        }
-        
-        #skeleton-legend h5 {
-            color: #aaa;
-            margin-bottom: 8px;
-        }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-        
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
-        
-        .legend-color.bone { background: #4a9aff; }
-        .legend-color.selected { background: #ffff00; box-shadow: 0 0 6px #ffff00; }
-        .legend-color.skeleton { background: #00ffaa; }
-        .legend-color.twist { background: #666; }
-        
-        /* Gizmo hint */
-        #gizmo-hint {
-            margin-top: 10px;
-            padding: 10px;
-            background: #3a3a5a;
-            border-radius: 6px;
-            font-size: 11px;
-            color: #aaa;
-        }
-        
-        #gizmo-hint strong {
-            color: #ff8a6a;
-        }
-        
-        /* Scrollbar styling */
-        #bone-list::-webkit-scrollbar,
-        #bone-panel::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        #bone-list::-webkit-scrollbar-track,
-        #bone-panel::-webkit-scrollbar-track {
-            background: #1a1a2e;
-            border-radius: 4px;
-        }
-        
-        #bone-list::-webkit-scrollbar-thumb,
-        #bone-panel::-webkit-scrollbar-thumb {
-            background: #4a4a6a;
-            border-radius: 4px;
-        }
-        
-        #bone-list::-webkit-scrollbar-thumb:hover,
-        #bone-panel::-webkit-scrollbar-thumb:hover {
-            background: #5a5a8a;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLB Animation & Bone Editor</title>
+  <style>
+      * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+      }
+
+      body {
+          overflow: hidden;
+          background: #1a1a2e;
+          font-family: system-ui, -apple-system, sans-serif;
+      }
+
+      #canvas-container {
+          width: 100vw;
+          height: 100vh;
+      }
+
+      #ui {
+          position: fixed;
+          top: 20px;
+          left: 20px;
+          z-index: 100;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+      }
+
+      .file-input-label {
+          background: #4a4a8a;
+          color: white;
+          padding: 12px 24px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 500;
+          transition: background 0.2s;
+          text-align: center;
+          display: block;
+      }
+
+      .file-input-label:hover {
+          background: #5a5a9a;
+      }
+
+      #fbx-input-label {
+          background: #8a6a4a;
+      }
+
+      #fbx-input-label:hover {
+          background: #9a7a5a;
+      }
+
+      #fbx-input-label.disabled {
+          background: #4a4a4a;
+          cursor: not-allowed;
+          opacity: 0.6;
+      }
+
+      .file-input {
+          display: none;
+      }
+
+      .control-btn {
+          background: #2a8a4a;
+          border: none;
+          color: white;
+          padding: 12px 24px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 500;
+          font-size: 14px;
+          transition: background 0.2s;
+      }
+
+      .control-btn:hover {
+          background: #3a9a5a;
+      }
+
+      #play-pause-btn.paused {
+          background: #8a4a2a;
+      }
+
+      #play-pause-btn.paused:hover {
+          background: #9a5a3a;
+      }
+
+      #toggle-skeleton-btn {
+          background: #6a4a8a;
+      }
+
+      #toggle-skeleton-btn:hover {
+          background: #7a5a9a;
+      }
+
+      #toggle-skeleton-btn.hidden {
+          background: #4a4a5a;
+      }
+
+      #info {
+          position: fixed;
+          bottom: 20px;
+          left: 20px;
+          background: rgba(0, 0, 0, 0.85);
+          color: white;
+          padding: 15px 20px;
+          border-radius: 8px;
+          font-size: 14px;
+          max-width: 400px;
+      }
+
+      #info h3 {
+          margin-bottom: 8px;
+          color: #8a8aff;
+      }
+
+      #animations-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+      }
+
+      .anim-btn {
+          background: #3a3a6a;
+          border: none;
+          color: white;
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+      }
+
+      .anim-btn:hover {
+          background: #5a5aaa;
+      }
+
+      .anim-btn.active {
+          background: #6a6aff;
+      }
+
+      .anim-btn.from-fbx {
+          background: #6a5a3a;
+      }
+
+      .anim-btn.from-fbx:hover {
+          background: #8a7a4a;
+      }
+
+      .anim-btn.from-fbx.active {
+          background: #aa8a4a;
+      }
+
+      /* Bone Editor Panel */
+      #bone-panel {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: rgba(0, 0, 0, 0.9);
+          color: white;
+          padding: 20px;
+          border-radius: 10px;
+          width: 320px;
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
+          z-index: 100;
+      }
+
+      #bone-panel h3 {
+          color: #ff8a6a;
+          margin-bottom: 15px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+      }
+
+      #bone-list {
+          max-height: 200px;
+          overflow-y: auto;
+          border: 1px solid #444;
+          border-radius: 6px;
+          margin-bottom: 15px;
+      }
+
+      .bone-item {
+          padding: 8px 12px;
+          cursor: pointer;
+          border-bottom: 1px solid #333;
+          transition: all 0.15s;
+          font-size: 13px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+      }
+
+      .bone-item::before {
+          content: '';
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #4a9aff;
+          flex-shrink: 0;
+      }
+
+      .bone-item:hover {
+          background: #3a3a5a;
+      }
+
+      .bone-item.selected {
+          background: #ff6a4a;
+          color: white;
+          font-weight: 500;
+      }
+
+      .bone-item.selected::before {
+          background: #ffff00;
+          box-shadow: 0 0 8px #ffff00;
+      }
+
+      /* Twist bones styling */
+      .bone-item.twist-bone {
+          opacity: 0.5;
+          font-style: italic;
+      }
+
+      .bone-item.twist-bone::before {
+          background: #666;
+      }
+
+      .bone-item.twist-bone::after {
+          content: '(twist)';
+          font-size: 10px;
+          color: #888;
+          margin-left: auto;
+      }
+
+      .bone-item:last-child {
+          border-bottom: none;
+      }
+
+      #rotation-controls {
+          display: none;
+          flex-direction: column;
+          gap: 12px;
+      }
+
+      #rotation-controls.visible {
+          display: flex;
+      }
+
+      #rotation-controls h4 {
+          color: #6af;
+          margin-bottom: 5px;
+      }
+
+      .rotation-axis {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+      }
+
+      .rotation-axis label {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 13px;
+      }
+
+      .rotation-axis label span.axis-label {
+          font-weight: bold;
+          width: 20px;
+      }
+
+      .rotation-axis label span.axis-label.x { color: #ff6b6b; }
+      .rotation-axis label span.axis-label.y { color: #6bff6b; }
+      .rotation-axis label span.axis-label.z { color: #6b6bff; }
+
+      .rotation-axis input[type="range"] {
+          flex: 1;
+          margin: 0 10px;
+          accent-color: #6a6aff;
+      }
+
+      .rotation-axis input[type="number"] {
+          width: 70px;
+          background: #2a2a4a;
+          border: 1px solid #444;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+      }
+
+      #reset-bone-btn {
+          background: #6a3a3a;
+          border: none;
+          color: white;
+          padding: 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          margin-top: 10px;
+          transition: background 0.2s;
+      }
+
+      #reset-bone-btn:hover {
+          background: #8a4a4a;
+      }
+
+      #selected-bone-name {
+          background: #2a2a4a;
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 15px;
+          font-weight: 500;
+          color: #ff8a6a;
+          text-align: center;
+      }
+
+      #loading {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          color: white;
+          font-size: 18px;
+          display: none;
+          text-align: center;
+      }
+
+      .spinner {
+          width: 40px;
+          height: 40px;
+          border: 4px solid #333;
+          border-top-color: #6a6aff;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 15px;
+      }
+
+      @keyframes spin {
+          to { transform: rotate(360deg); }
+      }
+
+      #no-bones-msg {
+          color: #888;
+          font-style: italic;
+          padding: 20px;
+          text-align: center;
+      }
+
+      /* Legend */
+      #skeleton-legend {
+          margin-top: 15px;
+          padding: 10px;
+          background: #2a2a3a;
+          border-radius: 6px;
+          font-size: 12px;
+      }
+
+      #skeleton-legend h5 {
+          color: #aaa;
+          margin-bottom: 8px;
+      }
+
+      .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+      }
+
+      .legend-color {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+      }
+
+      .legend-color.bone { background: #4a9aff; }
+      .legend-color.selected { background: #ffff00; box-shadow: 0 0 6px #ffff00; }
+      .legend-color.skeleton { background: #00ffaa; }
+      .legend-color.twist { background: #666; }
+
+      /* Gizmo hint */
+      #gizmo-hint {
+          margin-top: 10px;
+          padding: 10px;
+          background: #3a3a5a;
+          border-radius: 6px;
+          font-size: 11px;
+          color: #aaa;
+      }
+
+      #gizmo-hint strong {
+          color: #ff8a6a;
+      }
+
+      /* FBX Status */
+      #fbx-status {
+          margin-top: 10px;
+          padding: 10px;
+          background: #3a3a2a;
+          border-radius: 6px;
+          font-size: 12px;
+          color: #aa8;
+          display: none;
+      }
+
+      #fbx-status.visible {
+          display: block;
+      }
+
+      #fbx-status strong {
+          color: #dda;
+      }
+
+      /* Scrollbar styling */
+      #bone-list::-webkit-scrollbar,
+      #bone-panel::-webkit-scrollbar {
+          width: 8px;
+      }
+
+      #bone-list::-webkit-scrollbar-track,
+      #bone-panel::-webkit-scrollbar-track {
+          background: #1a1a2e;
+          border-radius: 4px;
+      }
+
+      #bone-list::-webkit-scrollbar-thumb,
+      #bone-panel::-webkit-scrollbar-thumb {
+          background: #4a4a6a;
+          border-radius: 4px;
+      }
+
+      #bone-list::-webkit-scrollbar-thumb:hover,
+      #bone-panel::-webkit-scrollbar-thumb:hover {
+          background: #5a5a8a;
+      }
+
+      /* Animations section styling */
+      .anim-section {
+          margin-top: 10px;
+      }
+
+      .anim-section-title {
+          font-size: 11px;
+          color: #888;
+          margin-bottom: 5px;
+          text-transform: uppercase;
+      }
+  </style>
 </head>
 <body>
-    <div id="canvas-container"></div>
-    
-    <div id="ui">
-        <label id="file-input-label">
-            📁 Charger un fichier .glb
-            <input type="file" id="file-input" accept=".glb,.gltf">
-        </label>
-        <button id="play-pause-btn" class="control-btn">⏸️ Pause Animation</button>
-        <button id="toggle-skeleton-btn" class="control-btn">🦴 Masquer Squelette</button>
-    </div>
-    
-    <div id="info">
-        <h3>GLB Animation & Bone Editor</h3>
-        <p>Chargez un fichier .glb pour visualiser le modèle et éditer les bones.</p>
-        <div id="animations-list"></div>
-    </div>
-    
-    <div id="bone-panel">
-        <h3>🦴 Bones du Skeleton</h3>
-        <div id="bone-list">
-            <div id="no-bones-msg">Aucun modèle chargé</div>
-        </div>
-        
-        <div id="rotation-controls">
-            <div id="selected-bone-name">Aucun bone sélectionné</div>
-            <h4>Rotation (degrés)</h4>
-            
-            <div class="rotation-axis">
-                <label>
-                    <span class="axis-label x">X</span>
-                    <input type="range" id="rot-x" min="-180" max="180" value="0" step="1">
-                    <input type="number" id="rot-x-num" min="-180" max="180" value="0" step="1">
-                </label>
-            </div>
-            
-            <div class="rotation-axis">
-                <label>
-                    <span class="axis-label y">Y</span>
-                    <input type="range" id="rot-y" min="-180" max="180" value="0" step="1">
-                    <input type="number" id="rot-y-num" min="-180" max="180" value="0" step="1">
-                </label>
-            </div>
-            
-            <div class="rotation-axis">
-                <label>
-                    <span class="axis-label z">Z</span>
-                    <input type="range" id="rot-z" min="-180" max="180" value="0" step="1">
-                    <input type="number" id="rot-z-num" min="-180" max="180" value="0" step="1">
-                </label>
-            </div>
-            
-            <button id="reset-bone-btn">🔄 Reset Rotation</button>
-            
-            <div id="gizmo-hint">
-                <strong>Astuce Gizmo:</strong> Utilisez les cercles colorés pour tourner le bone. 
-                Rouge = X, Vert = Y, Bleu = Z
-            </div>
-        </div>
-        
-        <div id="skeleton-legend">
-            <h5>Légende</h5>
-            <div class="legend-item">
-                <div class="legend-color skeleton"></div>
-                <span>Squelette</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color bone"></div>
-                <span>Bones (cliquez pour sélectionner)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color twist"></div>
-                <span>Bones twist (non cliquables)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color selected"></div>
-                <span>Bone sélectionné</span>
-            </div>
-        </div>
-    </div>
-    
-    <div id="loading">
-        <div class="spinner"></div>
-        <p>Chargement...</p>
-    </div>
+<div id="canvas-container"></div>
 
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-        }
+<div id="ui">
+  <label id="glb-input-label" class="file-input-label">
+    📁 Charger un modèle .glb
+    <input type="file" id="glb-input" class="file-input" accept=".glb,.gltf">
+  </label>
+  <label id="fbx-input-label" class="file-input-label disabled">
+    🎬 Charger animation .fbx
+    <input type="file" id="fbx-input" class="file-input" accept=".fbx" disabled>
+  </label>
+  <button id="play-pause-btn" class="control-btn">⏸️ Pause Animation</button>
+  <button id="toggle-skeleton-btn" class="control-btn">🦴 Masquer Squelette</button>
+</div>
+
+<div id="info">
+  <h3>GLB Animation & Bone Editor</h3>
+  <p>Chargez un fichier .glb pour visualiser le modèle et éditer les bones.</p>
+  <div id="animations-list"></div>
+  <div id="fbx-status">
+    <strong>Animation FBX:</strong> <span id="fbx-filename"></span>
+  </div>
+</div>
+
+<div id="bone-panel">
+  <h3>🦴 Bones du Skeleton</h3>
+  <div id="bone-list">
+    <div id="no-bones-msg">Aucun modèle chargé</div>
+  </div>
+  
+  <div id="rotation-controls">
+    <div id="selected-bone-name">Aucun bone sélectionné</div>
+    <h4>Rotation (degrés)</h4>
+    
+    <div class="rotation-axis">
+      <label>
+        <span class="axis-label x">X</span>
+        <input type="range" id="rot-x" min="-180" max="180" value="0" step="1">
+        <input type="number" id="rot-x-num" min="-180" max="180" value="0" step="1">
+      </label>
+    </div>
+    
+    <div class="rotation-axis">
+      <label>
+        <span class="axis-label y">Y</span>
+        <input type="range" id="rot-y" min="-180" max="180" value="0" step="1">
+        <input type="number" id="rot-y-num" min="-180" max="180" value="0" step="1">
+      </label>
+    </div>
+    
+    <div class="rotation-axis">
+      <label>
+        <span class="axis-label z">Z</span>
+        <input type="range" id="rot-z" min="-180" max="180" value="0" step="1">
+        <input type="number" id="rot-z-num" min="-180" max="180" value="0" step="1">
+      </label>
+    </div>
+    
+    <button id="reset-bone-btn">🔄 Reset Rotation</button>
+    
+    <div id="gizmo-hint">
+      <strong>Astuce Gizmo:</strong> Utilisez les cercles colorés pour tourner le bone.
+      Rouge = X, Vert = Y, Bleu = Z
+    </div>
+  </div>
+  
+  <div id="skeleton-legend">
+    <h5>Légende</h5>
+    <div class="legend-item">
+      <div class="legend-color skeleton"></div>
+      <span>Squelette</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color bone"></div>
+      <span>Bones (cliquez pour sélectionner)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color twist"></div>
+      <span>Bones twist (non cliquables)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color selected"></div>
+      <span>Bone sélectionné</span>
+    </div>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Chargement...</p>
+</div>
+
+<script type="importmap">
+  {
+      "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+  }
+</script>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
+  // Scene setup
+  const container = document.getElementById('canvas-container');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  // Camera
+  const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+  );
+  camera.position.set(3, 2, 5);
+
+  // Renderer
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.appendChild(renderer.domElement);
+
+  // Controls
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.target.set(0, 1, 0);
+
+  // Transform Controls (Gizmo)
+  const transformControls = new TransformControls(camera, renderer.domElement);
+  transformControls.setMode('rotate');
+  transformControls.setSize(0.8);
+  transformControls.setSpace('local');
+  scene.add(transformControls);
+
+  // Disable orbit controls when using transform controls
+  transformControls.addEventListener('dragging-changed', (event) => {
+    controls.enabled = !event.value;
+  });
+
+  // Update UI when gizmo is used
+  transformControls.addEventListener('change', () => {
+    if (selectedBone) {
+      updateRotationUI();
     }
-    </script>
+  });
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambientLight);
 
-        // Scene setup
-        const container = document.getElementById('canvas-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a2e);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+  directionalLight.position.set(5, 10, 7);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
+  directionalLight.shadow.camera.near = 0.5;
+  directionalLight.shadow.camera.far = 50;
+  directionalLight.shadow.camera.left = -10;
+  directionalLight.shadow.camera.right = 10;
+  directionalLight.shadow.camera.top = 10;
+  directionalLight.shadow.camera.bottom = -10;
+  scene.add(directionalLight);
 
-        // Camera
-        const camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000
-        );
-        camera.position.set(3, 2, 5);
+  const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+  fillLight.position.set(-5, 5, -5);
+  scene.add(fillLight);
 
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-        container.appendChild(renderer.domElement);
+  // Ground plane
+  const groundGeometry = new THREE.PlaneGeometry(20, 20);
+  const groundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x2a2a4e,
+    roughness: 0.8
+  });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
 
-        // Controls
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.target.set(0, 1, 0);
+  // Grid helper
+  const gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
+  scene.add(gridHelper);
 
-        // Transform Controls (Gizmo)
-        const transformControls = new TransformControls(camera, renderer.domElement);
-        transformControls.setMode('rotate');
-        transformControls.setSize(0.8);
-        transformControls.setSpace('local');
-        scene.add(transformControls);
+  // Animation system
+  let mixer = null;
+  let currentModel = null;
+  let glbAnimations = [];
+  let fbxAnimations = [];
+  let activeAction = null;
+  let isPlaying = true;
+  const clock = new THREE.Clock();
 
-        // Disable orbit controls when using transform controls
-        transformControls.addEventListener('dragging-changed', (event) => {
-            controls.enabled = !event.value;
-        });
+  // Bone system
+  let bones = [];
+  let bonesByName = new Map();
+  let selectedBone = null;
+  let selectedBoneIndex = -1;
+  let skeletonHelper = null;
+  let skeletonVisible = true;
 
-        // Update UI when gizmo is used
-        transformControls.addEventListener('change', () => {
-            if (selectedBone) {
-                updateRotationUI();
+  // Bone visualization
+  let boneMarkersGroup = new THREE.Group();
+  scene.add(boneMarkersGroup);
+  let boneMarkers = [];
+  let selectableBoneMarkers = [];
+
+  // Raycaster for clicking
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // Original bone rotations storage
+  const originalBoneRotations = new Map();
+
+  // Loaders
+  const gltfLoader = new GLTFLoader();
+  const fbxLoader = new FBXLoader();
+
+  // Check if bone is a twist bone
+  function isTwistBone(bone) {
+    const name = (bone.name || '').toLowerCase();
+    return name.includes('twist');
+  }
+
+  // Create bone marker sphere
+  function createBoneMarker(bone, index, isSelected = false) {
+    const isTwist = isTwistBone(bone);
+    const size = isSelected ? 0.045 : (isTwist ? 0.02 : 0.03);
+
+    let color;
+    if (isSelected) {
+      color = 0xffff00;
+    } else if (isTwist) {
+      color = 0x666666;
+    } else {
+      color = 0x4a9aff;
+    }
+
+    const geometry = new THREE.SphereGeometry(size, 16, 16);
+    const material = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: isSelected ? 1.0 : (isTwist ? 0.4 : 0.8),
+      depthTest: false
+    });
+
+    const sphere = new THREE.Mesh(geometry, material);
+    sphere.renderOrder = 999;
+    sphere.userData.boneIndex = index;
+    sphere.userData.isBoneMarker = true;
+    sphere.userData.isTwistBone = isTwist;
+    sphere.userData.isSelectable = !isTwist;
+
+    if (isSelected) {
+      const glowGeo = new THREE.SphereGeometry(size * 1.5, 16, 16);
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.3,
+        depthTest: false
+      });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.renderOrder = 998;
+      sphere.add(glow);
+    }
+
+    return sphere;
+  }
+
+  // Update all bone markers positions
+  function updateBoneMarkers() {
+    bones.forEach((bone, index) => {
+      if (boneMarkers[index]) {
+        bone.getWorldPosition(boneMarkers[index].position);
+      }
+    });
+  }
+
+  // Create bone markers for all bones
+  function createAllBoneMarkers() {
+    boneMarkersGroup.clear();
+    boneMarkers = [];
+    selectableBoneMarkers = [];
+
+    bones.forEach((bone, index) => {
+      const marker = createBoneMarker(bone, index, index === selectedBoneIndex);
+      boneMarkersGroup.add(marker);
+      boneMarkers.push(marker);
+
+      if (!isTwistBone(bone)) {
+        selectableBoneMarkers.push(marker);
+      }
+    });
+
+    updateBoneMarkers();
+  }
+
+  // Update selected bone marker
+  function updateSelectedBoneMarker() {
+    createAllBoneMarkers();
+  }
+
+  // Enable/disable FBX input
+  function setFbxInputEnabled(enabled) {
+    const fbxInput = document.getElementById('fbx-input');
+    const fbxLabel = document.getElementById('fbx-input-label');
+
+    fbxInput.disabled = !enabled;
+    if (enabled) {
+      fbxLabel.classList.remove('disabled');
+    } else {
+      fbxLabel.classList.add('disabled');
+    }
+  }
+
+  // Load GLB file
+  function loadGLB(url) {
+    const loading = document.getElementById('loading');
+    loading.style.display = 'block';
+
+    // Remove previous model
+    if (currentModel) {
+      scene.remove(currentModel);
+      currentModel.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+    }
+
+    // Clear skeleton helper
+    if (skeletonHelper) {
+      scene.remove(skeletonHelper);
+      skeletonHelper.dispose();
+      skeletonHelper = null;
+    }
+
+    // Detach transform controls
+    transformControls.detach();
+
+    // Clear bone markers
+    boneMarkersGroup.clear();
+    boneMarkers = [];
+    selectableBoneMarkers = [];
+    selectedBone = null;
+    selectedBoneIndex = -1;
+    bones = [];
+    bonesByName.clear();
+    originalBoneRotations.clear();
+    glbAnimations = [];
+    fbxAnimations = [];
+
+    if (mixer) {
+      mixer.stopAllAction();
+      mixer = null;
+    }
+
+    // Disable FBX input until model is loaded
+    setFbxInputEnabled(false);
+    document.getElementById('fbx-status').classList.remove('visible');
+
+    gltfLoader.load(
+        url,
+        (gltf) => {
+          loading.style.display = 'none';
+
+          currentModel = gltf.scene;
+          glbAnimations = gltf.animations;
+
+          let skinnedMesh = null;
+
+          // Enable shadows and collect bones
+          currentModel.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
             }
-        });
-
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        directionalLight.position.set(5, 10, 7);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 50;
-        directionalLight.shadow.camera.left = -10;
-        directionalLight.shadow.camera.right = 10;
-        directionalLight.shadow.camera.top = 10;
-        directionalLight.shadow.camera.bottom = -10;
-        scene.add(directionalLight);
-
-        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
-        fillLight.position.set(-5, 5, -5);
-        scene.add(fillLight);
-
-        // Ground plane
-        const groundGeometry = new THREE.PlaneGeometry(20, 20);
-        const groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2a2a4e,
-            roughness: 0.8
-        });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
-        // Grid helper
-        const gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
-        scene.add(gridHelper);
-
-        // Animation system
-        let mixer = null;
-        let currentModel = null;
-        let animations = [];
-        let activeAction = null;
-        let isPlaying = true;
-        const clock = new THREE.Clock();
-
-        // Bone system
-        let bones = [];
-        let selectedBone = null;
-        let selectedBoneIndex = -1;
-        let skeletonHelper = null;
-        let skeletonVisible = true;
-
-        // Bone visualization
-        let boneMarkersGroup = new THREE.Group();
-        scene.add(boneMarkersGroup);
-        let boneMarkers = [];
-        let selectableBoneMarkers = []; // Only non-twist bones
-
-        // Raycaster for clicking
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        // Original bone rotations storage
-        const originalBoneRotations = new Map();
-
-        // GLTFLoader
-        const loader = new GLTFLoader();
-
-        // Check if bone is a twist bone
-        function isTwistBone(bone) {
-            const name = (bone.name || '').toLowerCase();
-            return name.includes('twist');
-        }
-
-        // Create bone marker sphere
-        function createBoneMarker(bone, index, isSelected = false) {
-            const isTwist = isTwistBone(bone);
-            const size = isSelected ? 0.045 : (isTwist ? 0.02 : 0.03);
-            
-            let color;
-            if (isSelected) {
-                color = 0xffff00;
-            } else if (isTwist) {
-                color = 0x666666;
-            } else {
-                color = 0x4a9aff;
+            if (child.isSkinnedMesh && !skinnedMesh) {
+              skinnedMesh = child;
             }
-            
-            const geometry = new THREE.SphereGeometry(size, 16, 16);
-            const material = new THREE.MeshBasicMaterial({
-                color: color,
-                transparent: true,
-                opacity: isSelected ? 1.0 : (isTwist ? 0.4 : 0.8),
-                depthTest: false
-            });
-            
-            const sphere = new THREE.Mesh(geometry, material);
-            sphere.renderOrder = 999;
-            sphere.userData.boneIndex = index;
-            sphere.userData.isBoneMarker = true;
-            sphere.userData.isTwistBone = isTwist;
-            sphere.userData.isSelectable = !isTwist;
-            
-            // Add glow effect for selected bone
-            if (isSelected) {
-                const glowGeo = new THREE.SphereGeometry(size * 1.5, 16, 16);
-                const glowMat = new THREE.MeshBasicMaterial({
-                    color: 0xffff00,
-                    transparent: true,
-                    opacity: 0.3,
-                    depthTest: false
-                });
-                const glow = new THREE.Mesh(glowGeo, glowMat);
-                glow.renderOrder = 998;
-                sphere.add(glow);
+            if (child.isBone) {
+              bones.push(child);
+              bonesByName.set(child.name, child);
+              originalBoneRotations.set(child.uuid, child.rotation.clone());
             }
+          });
+
+          // Center and scale model
+          const box = new THREE.Box3().setFromObject(currentModel);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const scale = 2 / maxDim;
+          currentModel.scale.multiplyScalar(scale);
+
+          // Recalculate after scaling
+          box.setFromObject(currentModel);
+          box.getCenter(center);
+          currentModel.position.sub(center);
+          currentModel.position.y += (size.y * scale) / 2;
+
+          scene.add(currentModel);
+
+          // Create skeleton helper
+          if (skinnedMesh && skinnedMesh.skeleton) {
+            skeletonHelper = new THREE.SkeletonHelper(currentModel);
+            skeletonHelper.material.linewidth = 2;
+            skeletonHelper.material.color.setHex(0x00ffaa);
+            skeletonHelper.visible = skeletonVisible;
+            scene.add(skeletonHelper);
+          }
+
+          // Create bone markers
+          createAllBoneMarkers();
+
+          // Setup animation mixer
+          mixer = new THREE.AnimationMixer(currentModel);
+
+          if (glbAnimations.length > 0) {
+            updateAnimationsList();
+            playAnimation(0, 'glb');
+          } else {
+            updateAnimationsList();
+            updateInfo('Modèle chargé. Aucune animation GLB trouvée.');
+          }
+
+          // Update bone list UI
+          updateBoneList();
+
+          // Enable FBX input
+          setFbxInputEnabled(true);
+
+          // Adjust camera
+          const distance = Math.max(size.x, size.y, size.z) * scale * 2;
+          camera.position.set(distance, distance * 0.7, distance);
+          controls.target.set(0, (size.y * scale) / 2, 0);
+          controls.update();
+        },
+        (progress) => {
+          const percent = (progress.loaded / progress.total * 100).toFixed(0);
+          loading.querySelector('p').textContent = `Chargement... ${percent}%`;
+        },
+        (error) => {
+          loading.style.display = 'none';
+          console.error('Erreur de chargement GLB:', error);
+          updateInfo('Erreur lors du chargement du fichier GLB.');
+        }
+    );
+  }
+
+  // Load FBX file and apply animations to current model
+  function loadFBX(url, filename) {
+    if (!currentModel || !mixer) {
+      updateInfo('Veuillez d\'abord charger un modèle GLB.');
+      return;
+    }
+
+    const loading = document.getElementById('loading');
+    loading.style.display = 'block';
+    loading.querySelector('p').textContent = 'Chargement animation FBX...';
+
+    fbxLoader.load(
+        url,
+        (fbx) => {
+          loading.style.display = 'none';
+
+          console.log("fbx", fbx);
+
+          // FBX bones are accessed differently - collect bone names from the loaded FBX
+          const fbxBonesByName = new Map();
+
+          fbx.traverse((child) => {
+            if (child.isBone) {
+              // Remove mixamorig prefix if present
+              const cleanName = child.name.replace(/^mixamorig[_:]?/i, '');
+              fbxBonesByName.set(child.name, cleanName);
+            }
+          });
+
+          // Bone mapping from Mixamo FBX to GLB model bones
+          const boneMapping = {
+            // Racine et bassin
+            "Hips": ["Pelvis", "Hip"],             // ou "Pelvis"
             
-            return sphere;
-        }
+            // Colonne vertébrale
+            "Spine": ["Waist"],
+            "Spine1": ["Spine01"],
+            "Spine2": ["Spine02"],
 
-        // Update all bone markers positions
-        function updateBoneMarkers() {
-            bones.forEach((bone, index) => {
-                if (boneMarkers[index]) {
-                    bone.getWorldPosition(boneMarkers[index].position);
-                }
-            });
-        }
+            // Cou et tête
+            "Neck": ["NeckTwist01", "NeckTwist02"],     // ou "NeckTwist02"
+            "Head": ["Head"],
 
-        // Create bone markers for all bones
-        function createAllBoneMarkers() {
-            // Clear existing markers
-            boneMarkersGroup.clear();
-            boneMarkers = [];
-            selectableBoneMarkers = [];
-            
-            bones.forEach((bone, index) => {
-                const marker = createBoneMarker(bone, index, index === selectedBoneIndex);
-                boneMarkersGroup.add(marker);
-                boneMarkers.push(marker);
-                
-                // Only add non-twist bones to selectable list
-                if (!isTwistBone(bone)) {
-                    selectableBoneMarkers.push(marker);
-                }
-            });
-            
-            updateBoneMarkers();
-        }
+            // Jambe gauche
+            "LeftUpLeg": ["R_Thigh", "R_Thigh_Twist01", "R_Thigh_Twist02"],
+            "LeftLeg": ["R_Calf"],
+            "LeftFoot": ["R_Foot"],
 
-        // Update selected bone marker
-        function updateSelectedBoneMarker() {
-            createAllBoneMarkers();
-        }
+            // Jambe droite
+            "RightUpLeg": ["L_Thigh", "L_Thigh_Twist01", "L_Thigh_Twist02"],
+            "RightLeg": ["L_Calf"],
+            "RightFoot": ["L_Foot"],
 
-        // Load GLB file
-        function loadGLB(url) {
-            const loading = document.getElementById('loading');
-            loading.style.display = 'block';
+            // Bras gauche
+            "LeftShoulder": ["R_Clavicle"],
+            "LeftArm": ["R_Upperarm"],
+            "LeftForeArm": ["R_Forearm"],
+            "LeftHand": ["R_Hand"],
 
-            // Remove previous model
-            if (currentModel) {
-                scene.remove(currentModel);
-                currentModel.traverse((child) => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(m => m.dispose());
-                        } else {
-                            child.material.dispose();
-                        }
+            // Bras droit
+            "RightShoulder": ["L_Clavicle"],
+            "RightArm": ["L_Upperarm"],
+            "RightForeArm": ["L_Forearm"],
+            "RightHand": ["L_Hand"]
+          };
+
+          const fbxAnims = fbx.animations || [];
+
+          if (fbxAnims.length === 0) {
+            updateInfo('Aucune animation trouvée dans le fichier FBX.');
+            return;
+          }
+
+          // Remap animations to use current model's bones
+          fbxAnimations = [];
+
+          fbxAnims.forEach((clip, clipIndex) => {
+            const remappedTracks = [];
+
+            clip.tracks.forEach(track => {
+              // Parse track name to get bone name and property
+              // FBX track names are usually like "mixamorigBoneName.property"
+              const trackNameParts = track.name.split('.');
+              const fbxBoneName = trackNameParts[0];
+              // Clean the bone name (remove mixamorig prefix)
+              const cleanBoneName = fbxBoneName.replace(/^mixamorig[_:]?/i, '');
+              const mappedBoneName = boneMapping[cleanBoneName];
+              const property = trackNameParts.slice(1).join('.');
+
+              for(let i=0; i<mappedBoneName?.length; i++) {
+                const testBoneName = mappedBoneName[i];
+                const targetBone = bonesByName.get(testBoneName);
+  
+                if (targetBone && property !== "position") {
+                  // Create new track pointing to our model's bone
+                  const newTrackName = `${targetBone.uuid}.${property}`;
+  
+                  let newTrack;
+                  if (track instanceof THREE.VectorKeyframeTrack) {
+                    newTrack = new THREE.VectorKeyframeTrack(
+                        newTrackName,
+                        track.times,
+                        track.values
+                    );
+                  } else if (track instanceof THREE.QuaternionKeyframeTrack) {
+                    // Apply 180° rotation correction (negate X and W components)
+                    const correctedValues = new Float32Array(track.values.length);
+                    for (let i = 0; i < track.values.length; i += 4) {
+                      correctedValues[i] = track.values[i];       // -x
+                      correctedValues[i + 1] = track.values[i + 1]; // y
+                      correctedValues[i + 2] = track.values[i + 2]; // z
+                      correctedValues[i + 3] = track.values[i + 3]; // -w
                     }
-                });
-            }
 
-            // Clear skeleton helper
-            if (skeletonHelper) {
-                scene.remove(skeletonHelper);
-                skeletonHelper.dispose();
-                skeletonHelper = null;
-            }
+                    if(cleanBoneName.includes("Twist") ||
+                        cleanBoneName === "NeckTwist01" ||
+                      cleanBoneName === "NeckTwist02" ||
+                      cleanBoneName === "R_Thigh_Twist01" ||
+                      cleanBoneName === "R_Thigh_Twist02" ||
+                      cleanBoneName === "L_Thigh_Twist01" ||
+                      cleanBoneName === "L_Thigh_Twist02")
+                    {
+                      console.log("Applying 180° Y rotation to twist bone");
+                      for (let i = 0; i < track.values.length; i += 4) {
+                        const x = track.values[i];
+                        const y = track.values[i + 1];
+                        const z = track.values[i + 2];
+                        const w = track.values[i + 3];
+                        correctedValues[i] = -z;      // new x
+                        correctedValues[i + 1] = w;   // new y
+                        correctedValues[i + 2] = -x;  // new z
+                        correctedValues[i + 3] = -y;  // new w
+                      }
+                    }
 
-            // Detach transform controls
-            transformControls.detach();
-
-            // Clear bone markers
-            boneMarkersGroup.clear();
-            boneMarkers = [];
-            selectableBoneMarkers = [];
-            selectedBone = null;
-            selectedBoneIndex = -1;
-            bones = [];
-            originalBoneRotations.clear();
-
-            if (mixer) {
-                mixer.stopAllAction();
-                mixer = null;
-            }
-
-            loader.load(
-                url,
-                (gltf) => {
-                    loading.style.display = 'none';
+                    if(testBoneName === "Hip") {
+                      // Apply 90° rotation around X axis: multiply by quaternion (0.7071, 0, 0, 0.7071)
+                      const s = Math.SQRT1_2; // 0.7071 = sin(45°) = cos(45°)
+                      for (let i = 0; i < track.values.length; i += 4) {
+                        const x = track.values[i];
+                        const y = track.values[i + 1];
+                        const z = track.values[i + 2];
+                        const w = track.values[i + 3];
+                        correctedValues[i] = s * (w + x);      // new x
+                        correctedValues[i + 1] = s * (y - z);  // new y
+                        correctedValues[i + 2] = s * (y + z);  // new z
+                        correctedValues[i + 3] = s * (w - x);  // new w
+                      }
+                    }
                     
-                    currentModel = gltf.scene;
-                    animations = gltf.animations;
-
-                    let skinnedMesh = null;
-
-                    // Enable shadows and collect bones
-                    currentModel.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                        }
-                        if (child.isSkinnedMesh && !skinnedMesh) {
-                            skinnedMesh = child;
-                        }
-                        if (child.isBone) {
-                            bones.push(child);
-                            originalBoneRotations.set(child.uuid, child.rotation.clone());
-                        }
-                    });
-
-                    // Center and scale model
-                    const box = new THREE.Box3().setFromObject(currentModel);
-                    const size = box.getSize(new THREE.Vector3());
-                    const center = box.getCenter(new THREE.Vector3());
-
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 2 / maxDim;
-                    currentModel.scale.multiplyScalar(scale);
-
-                    // Recalculate after scaling
-                    box.setFromObject(currentModel);
-                    box.getCenter(center);
-                    currentModel.position.sub(center);
-                    currentModel.position.y += (size.y * scale) / 2;
-
-                    scene.add(currentModel);
-
-                    // Create skeleton helper
-                    if (skinnedMesh && skinnedMesh.skeleton) {
-                        skeletonHelper = new THREE.SkeletonHelper(currentModel);
-                        skeletonHelper.material.linewidth = 2;
-                        skeletonHelper.material.color.setHex(0x00ffaa);
-                        skeletonHelper.visible = skeletonVisible;
-                        scene.add(skeletonHelper);
-                    }
-
-                    // Create bone markers
-                    createAllBoneMarkers();
-
-                    // Setup animation mixer
-                    if (animations.length > 0) {
-                        mixer = new THREE.AnimationMixer(currentModel);
-                        updateAnimationsList();
-                        playAnimation(0);
-                    } else {
-                        updateInfo('Aucune animation trouvée dans ce modèle.');
-                    }
-
-                    // Update bone list UI
-                    updateBoneList();
-
-                    // Adjust camera
-                    const distance = Math.max(size.x, size.y, size.z) * scale * 2;
-                    camera.position.set(distance, distance * 0.7, distance);
-                    controls.target.set(0, (size.y * scale) / 2, 0);
-                    controls.update();
-                },
-                (progress) => {
-                    const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                    loading.querySelector('p').textContent = `Chargement... ${percent}%`;
-                },
-                (error) => {
-                    loading.style.display = 'none';
-                    console.error('Erreur de chargement:', error);
-                    updateInfo('Erreur lors du chargement du fichier.');
+                    newTrack = new THREE.QuaternionKeyframeTrack(
+                        newTrackName,
+                        track.times,
+                        correctedValues
+                    );
+                  } else if (track instanceof THREE.NumberKeyframeTrack) {
+                    newTrack = new THREE.NumberKeyframeTrack(
+                        newTrackName,
+                        track.times,
+                        track.values
+                    );
+                  } else {
+                    // Generic KeyframeTrack
+                    newTrack = new THREE.KeyframeTrack(
+                        newTrackName,
+                        track.times,
+                        track.values
+                    );
+                  }
+  
+                  remappedTracks.push(newTrack);
                 }
-            );
-        }
-
-        // Play specific animation
-        function playAnimation(index) {
-            if (!mixer || index >= animations.length) return;
-
-            const clip = animations[index];
-
-            if (activeAction) {
-                activeAction.fadeOut(0.3);
-            }
-
-            activeAction = mixer.clipAction(clip);
-            activeAction.reset();
-            activeAction.fadeIn(0.3);
-            activeAction.play();
-            
-            if (!isPlaying) {
-                activeAction.paused = true;
-            }
-
-            document.querySelectorAll('.anim-btn').forEach((btn, i) => {
-                btn.classList.toggle('active', i === index);
+              }
             });
 
-            updateInfo(`Animation: "${clip.name}" (${clip.duration.toFixed(2)}s)`);
-        }
-
-        // Toggle play/pause
-        function togglePlayPause() {
-            isPlaying = !isPlaying;
-            
-            const btn = document.getElementById('play-pause-btn');
-            if (isPlaying) {
-                btn.textContent = '⏸️ Pause Animation';
-                btn.classList.remove('paused');
-                if (activeAction) {
-                    activeAction.paused = false;
-                }
-            } else {
-                btn.textContent = '▶️ Play Animation';
-                btn.classList.add('paused');
-                if (activeAction) {
-                    activeAction.paused = true;
-                }
+            if (remappedTracks.length > 0) {
+              const remappedClip = new THREE.AnimationClip(
+                  clip.name || `FBX_Animation_${clipIndex + 1}`,
+                  clip.duration,
+                  remappedTracks
+              );
+              remappedClip.userData = { source: 'fbx' };
+              fbxAnimations.push(remappedClip);
             }
+          });
+
+          if (fbxAnimations.length > 0) {
+            // Update animations list
+            updateAnimationsList();
+
+            // Play first FBX animation
+            playAnimation(0, 'fbx');
+
+            // Show FBX status
+            document.getElementById('fbx-filename').textContent = filename;
+            document.getElementById('fbx-status').classList.add('visible');
+
+            updateInfo(`${fbxAnimations.length} animation(s) FBX chargée(s) et appliquée(s).`);
+          } else {
+            updateInfo('Aucune animation compatible trouvée dans le FBX. Vérifiez que les noms des bones correspondent.');
+          }
+        },
+        (progress) => {
+          const percent = (progress.loaded / progress.total * 100).toFixed(0);
+          loading.querySelector('p').textContent = `Chargement FBX... ${percent}%`;
+        },
+        (error) => {
+          loading.style.display = 'none';
+          console.error('Erreur de chargement FBX:', error);
+          updateInfo('Erreur lors du chargement du fichier FBX.');
         }
+    );
+  }
 
-        // Toggle skeleton visibility
-        function toggleSkeleton() {
-            skeletonVisible = !skeletonVisible;
-            
-            const btn = document.getElementById('toggle-skeleton-btn');
-            if (skeletonVisible) {
-                btn.textContent = '🦴 Masquer Squelette';
-                btn.classList.remove('hidden');
-            } else {
-                btn.textContent = '🦴 Afficher Squelette';
-                btn.classList.add('hidden');
-            }
-            
-            if (skeletonHelper) {
-                skeletonHelper.visible = skeletonVisible;
-            }
-            
-            boneMarkersGroup.visible = skeletonVisible;
-        }
+  // Play specific animation
+  function playAnimation(index, source = 'glb') {
+    if (!mixer) return;
 
-        // Update animations list UI
-        function updateAnimationsList() {
-            const listContainer = document.getElementById('animations-list');
-            listContainer.innerHTML = '';
+    const animations = source === 'glb' ? glbAnimations : fbxAnimations;
+    if (index >= animations.length) return;
 
-            if (animations.length === 0) {
-                listContainer.innerHTML = '<p style="color: #888;">Aucune animation</p>';
-                return;
-            }
+    const clip = animations[index];
 
-            animations.forEach((clip, index) => {
-                const btn = document.createElement('button');
-                btn.className = 'anim-btn';
-                btn.textContent = clip.name || `Animation ${index + 1}`;
-                btn.addEventListener('click', () => playAnimation(index));
-                listContainer.appendChild(btn);
-            });
-        }
+    if (activeAction) {
+      activeAction.fadeOut(0.3);
+    }
 
-        // Update bone list UI
-        function updateBoneList() {
-            const listContainer = document.getElementById('bone-list');
-            listContainer.innerHTML = '';
+    activeAction = mixer.clipAction(clip);
+    activeAction.reset();
+    activeAction.fadeIn(0.3);
+    activeAction.play();
 
-            if (bones.length === 0) {
-                listContainer.innerHTML = '<div id="no-bones-msg">Aucun bone trouvé</div>';
-                document.getElementById('rotation-controls').classList.remove('visible');
-                return;
-            }
+    if (!isPlaying) {
+      activeAction.paused = true;
+    }
 
-            bones.forEach((bone, index) => {
-                const item = document.createElement('div');
-                item.className = 'bone-item';
-                
-                // Add twist-bone class if it's a twist bone
-                if (isTwistBone(bone)) {
-                    item.classList.add('twist-bone');
-                }
-                
-                item.textContent = bone.name || `Bone ${index + 1}`;
-                item.dataset.index = index;
-                item.addEventListener('click', () => selectBone(index));
-                listContainer.appendChild(item);
-            });
-        }
+    // Update button states
+    document.querySelectorAll('.anim-btn').forEach(btn => {
+      const btnSource = btn.dataset.source;
+      const btnIndex = parseInt(btn.dataset.index);
+      btn.classList.toggle('active', btnSource === source && btnIndex === index);
+    });
 
-        // Select a bone
-        function selectBone(index) {
-            selectedBone = bones[index];
-            selectedBoneIndex = index;
-            
-            // Update UI selection
-            document.querySelectorAll('.bone-item').forEach((item, i) => {
-                item.classList.toggle('selected', i === index);
-            });
+    updateInfo(`Animation: "${clip.name}" (${clip.duration.toFixed(2)}s) - Source: ${source.toUpperCase()}`);
+  }
 
-            // Scroll to selected bone in list
-            const selectedItem = document.querySelector(`.bone-item[data-index="${index}"]`);
-            if (selectedItem) {
-                selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+  // Toggle play/pause
+  function togglePlayPause() {
+    isPlaying = !isPlaying;
 
-            // Show rotation controls
-            document.getElementById('rotation-controls').classList.add('visible');
-            document.getElementById('selected-bone-name').textContent = selectedBone.name || `Bone ${index + 1}`;
+    const btn = document.getElementById('play-pause-btn');
+    if (isPlaying) {
+      btn.textContent = '⏸️ Pause Animation';
+      btn.classList.remove('paused');
+      if (activeAction) {
+        activeAction.paused = false;
+      }
+    } else {
+      btn.textContent = '▶️ Play Animation';
+      btn.classList.add('paused');
+      if (activeAction) {
+        activeAction.paused = true;
+      }
+    }
+  }
 
-            // Update sliders with current rotation
-            updateRotationUI();
+  // Toggle skeleton visibility
+  function toggleSkeleton() {
+    skeletonVisible = !skeletonVisible;
 
-            // Update bone markers to highlight selected
-            updateSelectedBoneMarker();
+    const btn = document.getElementById('toggle-skeleton-btn');
+    if (skeletonVisible) {
+      btn.textContent = '🦴 Masquer Squelette';
+      btn.classList.remove('hidden');
+    } else {
+      btn.textContent = '🦴 Afficher Squelette';
+      btn.classList.add('hidden');
+    }
 
-            // Attach transform controls to the bone
-            transformControls.attach(selectedBone);
-        }
+    if (skeletonHelper) {
+      skeletonHelper.visible = skeletonVisible;
+    }
 
-        // Deselect bone
-        function deselectBone() {
-            selectedBone = null;
-            selectedBoneIndex = -1;
-            
-            document.querySelectorAll('.bone-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-            
-            document.getElementById('rotation-controls').classList.remove('visible');
-            
-            transformControls.detach();
-            updateSelectedBoneMarker();
-        }
+    boneMarkersGroup.visible = skeletonVisible;
+  }
 
-        // Update rotation UI from bone
-        function updateRotationUI() {
-            if (!selectedBone) return;
-            
-            const rot = selectedBone.rotation;
-            const toDeg = THREE.MathUtils.radToDeg;
-            
-            document.getElementById('rot-x').value = toDeg(rot.x);
-            document.getElementById('rot-x-num').value = Math.round(toDeg(rot.x));
-            document.getElementById('rot-y').value = toDeg(rot.y);
-            document.getElementById('rot-y-num').value = Math.round(toDeg(rot.y));
-            document.getElementById('rot-z').value = toDeg(rot.z);
-            document.getElementById('rot-z-num').value = Math.round(toDeg(rot.z));
-        }
+  // Update animations list UI
+  function updateAnimationsList() {
+    const listContainer = document.getElementById('animations-list');
+    listContainer.innerHTML = '';
 
-        // Update bone rotation
-        function updateBoneRotation(axis, value) {
-            if (!selectedBone) return;
-            
-            const toRad = THREE.MathUtils.degToRad;
-            selectedBone.rotation[axis] = toRad(value);
-            
-            // Sync slider and number input
-            document.getElementById(`rot-${axis}`).value = value;
-            document.getElementById(`rot-${axis}-num`).value = Math.round(value);
-        }
+    const hasGlbAnims = glbAnimations.length > 0;
+    const hasFbxAnims = fbxAnimations.length > 0;
 
-        // Reset selected bone rotation
-        function resetBoneRotation() {
-            if (!selectedBone) return;
-            
-            const originalRot = originalBoneRotations.get(selectedBone.uuid);
-            if (originalRot) {
-                selectedBone.rotation.copy(originalRot);
-                updateRotationUI();
-            }
-        }
+    if (!hasGlbAnims && !hasFbxAnims) {
+      listContainer.innerHTML = '<p style="color: #888;">Aucune animation</p>';
+      return;
+    }
 
-        // Update info panel
-        function updateInfo(message) {
-            const info = document.getElementById('info');
-            info.querySelector('p').textContent = message;
-        }
+    // GLB Animations
+    if (hasGlbAnims) {
+      const glbSection = document.createElement('div');
+      glbSection.className = 'anim-section';
 
-        // Handle click for bone selection
-        function onCanvasClick(event) {
-            // Ignore if clicking on UI
-            if (event.target !== renderer.domElement) return;
-            
-            // Calculate mouse position
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            
-            // Raycast
-            raycaster.setFromCamera(mouse, camera);
-            
-            // Only check intersection with SELECTABLE bone markers (non-twist)
-            const intersects = raycaster.intersectObjects(selectableBoneMarkers, false);
-            
-            if (intersects.length > 0) {
-                const clickedMarker = intersects[0].object;
-                if (clickedMarker.userData.isBoneMarker && clickedMarker.userData.isSelectable) {
-                    const boneIndex = clickedMarker.userData.boneIndex;
-                    selectBone(boneIndex);
-                }
-            }
-        }
+      const glbTitle = document.createElement('div');
+      glbTitle.className = 'anim-section-title';
+      glbTitle.textContent = 'GLB';
+      glbSection.appendChild(glbTitle);
 
-        // Event listeners
-        document.getElementById('file-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const url = URL.createObjectURL(file);
-                loadGLB(url);
-            }
-        });
+      const glbButtons = document.createElement('div');
+      glbButtons.style.display = 'flex';
+      glbButtons.style.flexWrap = 'wrap';
+      glbButtons.style.gap = '8px';
 
-        document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
-        document.getElementById('toggle-skeleton-btn').addEventListener('click', toggleSkeleton);
+      glbAnimations.forEach((clip, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'anim-btn';
+        btn.textContent = clip.name || `Animation ${index + 1}`;
+        btn.dataset.source = 'glb';
+        btn.dataset.index = index;
+        btn.addEventListener('click', () => playAnimation(index, 'glb'));
+        glbButtons.appendChild(btn);
+      });
 
-        // Click on canvas for bone selection
-        renderer.domElement.addEventListener('click', onCanvasClick);
+      glbSection.appendChild(glbButtons);
+      listContainer.appendChild(glbSection);
+    }
 
-        // Escape to deselect
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                deselectBone();
-            }
-        });
+    // FBX Animations
+    if (hasFbxAnims) {
+      const fbxSection = document.createElement('div');
+      fbxSection.className = 'anim-section';
 
-        // Rotation controls
-        ['x', 'y', 'z'].forEach(axis => {
-            document.getElementById(`rot-${axis}`).addEventListener('input', (e) => {
-                updateBoneRotation(axis, parseFloat(e.target.value));
-            });
-            document.getElementById(`rot-${axis}-num`).addEventListener('input', (e) => {
-                let val = parseFloat(e.target.value) || 0;
-                val = Math.max(-180, Math.min(180, val));
-                updateBoneRotation(axis, val);
-            });
-        });
+      const fbxTitle = document.createElement('div');
+      fbxTitle.className = 'anim-section-title';
+      fbxTitle.textContent = 'FBX';
+      fbxSection.appendChild(fbxTitle);
 
-        document.getElementById('reset-bone-btn').addEventListener('click', resetBoneRotation);
+      const fbxButtons = document.createElement('div');
+      fbxButtons.style.display = 'flex';
+      fbxButtons.style.flexWrap = 'wrap';
+      fbxButtons.style.gap = '8px';
 
-        // Drag and drop
-        document.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            document.body.style.opacity = '0.7';
-        });
+      fbxAnimations.forEach((clip, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'anim-btn from-fbx';
+        btn.textContent = clip.name || `FBX Anim ${index + 1}`;
+        btn.dataset.source = 'fbx';
+        btn.dataset.index = index;
+        btn.addEventListener('click', () => playAnimation(index, 'fbx'));
+        fbxButtons.appendChild(btn);
+      });
 
-        document.addEventListener('dragleave', () => {
-            document.body.style.opacity = '1';
-        });
+      fbxSection.appendChild(fbxButtons);
+      listContainer.appendChild(fbxSection);
+    }
+  }
 
-        document.addEventListener('drop', (e) => {
-            e.preventDefault();
-            document.body.style.opacity = '1';
-            
-            const file = e.dataTransfer.files[0];
-            if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
-                const url = URL.createObjectURL(file);
-                loadGLB(url);
-            }
-        });
+  // Update bone list UI
+  function updateBoneList() {
+    const listContainer = document.getElementById('bone-list');
+    listContainer.innerHTML = '';
 
-        // Handle resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+    if (bones.length === 0) {
+      listContainer.innerHTML = '<div id="no-bones-msg">Aucun bone trouvé</div>';
+      document.getElementById('rotation-controls').classList.remove('visible');
+      return;
+    }
 
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
+    bones.forEach((bone, index) => {
+      const item = document.createElement('div');
+      item.className = 'bone-item';
 
-            const delta = clock.getDelta();
+      if (isTwistBone(bone)) {
+        item.classList.add('twist-bone');
+      }
 
-            if (mixer) {
-                mixer.update(delta);
-                
-                // Update rotation UI if animation is playing and bone selected
-                if (isPlaying && selectedBone) {
-                    updateRotationUI();
-                }
-            }
+      item.textContent = bone.name || `Bone ${index + 1}`;
+      item.dataset.index = index;
+      item.addEventListener('click', () => selectBone(index));
+      listContainer.appendChild(item);
+    });
+  }
 
-            // Update bone markers positions
-            updateBoneMarkers();
+  // Select a bone
+  function selectBone(index) {
+    selectedBone = bones[index];
+    selectedBoneIndex = index;
 
-            controls.update();
-            renderer.render(scene, camera);
-        }
+    document.querySelectorAll('.bone-item').forEach((item, i) => {
+      item.classList.toggle('selected', i === index);
+    });
 
-        animate();
-    </script>
+    const selectedItem = document.querySelector(`.bone-item[data-index="${index}"]`);
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    document.getElementById('rotation-controls').classList.add('visible');
+    document.getElementById('selected-bone-name').textContent = selectedBone.name || `Bone ${index + 1}`;
+
+    updateRotationUI();
+    updateSelectedBoneMarker();
+    transformControls.attach(selectedBone);
+  }
+
+  // Deselect bone
+  function deselectBone() {
+    selectedBone = null;
+    selectedBoneIndex = -1;
+
+    document.querySelectorAll('.bone-item').forEach(item => {
+      item.classList.remove('selected');
+    });
+
+    document.getElementById('rotation-controls').classList.remove('visible');
+
+    transformControls.detach();
+    updateSelectedBoneMarker();
+  }
+
+  // Update rotation UI from bone
+  function updateRotationUI() {
+    if (!selectedBone) return;
+
+    const rot = selectedBone.rotation;
+    const toDeg = THREE.MathUtils.radToDeg;
+
+    document.getElementById('rot-x').value = toDeg(rot.x);
+    document.getElementById('rot-x-num').value = Math.round(toDeg(rot.x));
+    document.getElementById('rot-y').value = toDeg(rot.y);
+    document.getElementById('rot-y-num').value = Math.round(toDeg(rot.y));
+    document.getElementById('rot-z').value = toDeg(rot.z);
+    document.getElementById('rot-z-num').value = Math.round(toDeg(rot.z));
+  }
+
+  // Update bone rotation
+  function updateBoneRotation(axis, value) {
+    if (!selectedBone) return;
+
+    const toRad = THREE.MathUtils.degToRad;
+    selectedBone.rotation[axis] = toRad(value);
+
+    document.getElementById(`rot-${axis}`).value = value;
+    document.getElementById(`rot-${axis}-num`).value = Math.round(value);
+  }
+
+  // Reset selected bone rotation
+  function resetBoneRotation() {
+    if (!selectedBone) return;
+
+    const originalRot = originalBoneRotations.get(selectedBone.uuid);
+    if (originalRot) {
+      selectedBone.rotation.copy(originalRot);
+      updateRotationUI();
+    }
+  }
+
+  // Update info panel
+  function updateInfo(message) {
+    const info = document.getElementById('info');
+    info.querySelector('p').textContent = message;
+  }
+
+  // Handle click for bone selection
+  function onCanvasClick(event) {
+    if (event.target !== renderer.domElement) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(selectableBoneMarkers, false);
+
+    if (intersects.length > 0) {
+      const clickedMarker = intersects[0].object;
+      if (clickedMarker.userData.isBoneMarker && clickedMarker.userData.isSelectable) {
+        const boneIndex = clickedMarker.userData.boneIndex;
+        selectBone(boneIndex);
+      }
+    }
+  }
+
+  // Event listeners
+  document.getElementById('glb-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      loadGLB(url);
+    }
+  });
+
+  document.getElementById('fbx-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      loadFBX(url, file.name);
+    }
+  });
+
+  document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
+  document.getElementById('toggle-skeleton-btn').addEventListener('click', toggleSkeleton);
+
+  renderer.domElement.addEventListener('click', onCanvasClick);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      deselectBone();
+    }
+  });
+
+  ['x', 'y', 'z'].forEach(axis => {
+    document.getElementById(`rot-${axis}`).addEventListener('input', (e) => {
+      updateBoneRotation(axis, parseFloat(e.target.value));
+    });
+    document.getElementById(`rot-${axis}-num`).addEventListener('input', (e) => {
+      let val = parseFloat(e.target.value) || 0;
+      val = Math.max(-180, Math.min(180, val));
+      updateBoneRotation(axis, val);
+    });
+  });
+
+  document.getElementById('reset-bone-btn').addEventListener('click', resetBoneRotation);
+
+  // Drag and drop
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.body.style.opacity = '0.7';
+  });
+
+  document.addEventListener('dragleave', () => {
+    document.body.style.opacity = '1';
+  });
+
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.body.style.opacity = '1';
+
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
+        const url = URL.createObjectURL(file);
+        loadGLB(url);
+      } else if (file.name.endsWith('.fbx') && currentModel) {
+        const url = URL.createObjectURL(file);
+        loadFBX(url, file.name);
+      }
+    }
+  });
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Animation loop
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = clock.getDelta();
+
+    if (mixer) {
+      mixer.update(delta);
+
+      if (isPlaying && selectedBone) {
+        updateRotationUI();
+      }
+    }
+
+    updateBoneMarkers();
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+</script>
 </body>
 </html>
