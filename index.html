@@ -189,14 +189,24 @@
       }
 
       .bone-item {
-          padding: 8px 12px;
+          padding: 6px 12px;
           cursor: pointer;
           border-bottom: 1px solid #333;
           transition: all 0.15s;
-          font-size: 13px;
+          font-size: 12px;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
+      }
+
+      .bone-item .bone-indent {
+          display: inline-block;
+          width: 12px;
+          border-left: 1px solid #555;
+          border-bottom: 1px solid #555;
+          height: 10px;
+          margin-right: 2px;
+          flex-shrink: 0;
       }
 
       .bone-item::before {
@@ -461,9 +471,9 @@
 <div id="canvas-container"></div>
 
 <div id="ui">
-  <label id="glb-input-label" class="file-input-label">
-    📁 Charger un modèle .glb
-    <input type="file" id="glb-input" class="file-input" accept=".glb,.gltf">
+  <label id="modele-input-label" class="file-input-label">
+    📁 Charger un modèle
+    <input type="file" id="modele-input" class="file-input" accept=".glb,.gltf,.fbx">
   </label>
   <label id="fbx-input-label" class="file-input-label disabled">
     🎬 Charger animation .fbx
@@ -601,6 +611,8 @@
   transformControls.setSize(0.8);
   transformControls.setSpace('local');
   scene.add(transformControls);
+  
+  window.transformControls = transformControls;
 
   // Disable orbit controls when using transform controls
   transformControls.addEventListener('dragging-changed', (event) => {
@@ -652,8 +664,11 @@
 
   // Animation system
   let mixer = null;
+  let mixerFbx = null;
   let currentModel = null;
-  let glbAnimations = [];
+  let secondaryFbxModel = null;
+  let skeletonHelperFbx = null;
+  let principalAnimations = [];
   let fbxAnimations = [];
   let activeAction = null;
   let isPlaying = true;
@@ -662,6 +677,11 @@
   // Bone system
   let bones = [];
   let bonesByName = new Map();
+  let fbxBonesByName = new Map();
+  window.fbxBonesByName = fbxBonesByName;
+  window.bonesByName = bonesByName;
+  window.THREE = THREE;
+  
   let selectedBone = null;
   let selectedBoneIndex = -1;
   let skeletonHelper = null;
@@ -679,6 +699,7 @@
 
   // Original bone rotations storage
   const originalBoneRotations = new Map();
+  window.originalBoneRotations = originalBoneRotations;
 
   // Loaders
   const gltfLoader = new GLTFLoader();
@@ -782,7 +803,7 @@
   }
 
   // Load GLB file
-  function loadGLB(url) {
+  function loadPrincipal(url, filename) {
     const loading = document.getElementById('loading');
     loading.style.display = 'block';
 
@@ -820,7 +841,7 @@
     bones = [];
     bonesByName.clear();
     originalBoneRotations.clear();
-    glbAnimations = [];
+    principalAnimations = [];
     fbxAnimations = [];
 
     if (mixer) {
@@ -832,98 +853,127 @@
     setFbxInputEnabled(false);
     document.getElementById('fbx-status').classList.remove('visible');
 
-    gltfLoader.load(
-        url,
-        (gltf) => {
-          loading.style.display = 'none';
-
-          currentModel = gltf.scene;
-          glbAnimations = gltf.animations;
-
-          let skinnedMesh = null;
-
-          // Enable shadows and collect bones
-          currentModel.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-            if (child.isSkinnedMesh && !skinnedMesh) {
-              skinnedMesh = child;
-            }
-            if (child.isBone) {
-              bones.push(child);
-              bonesByName.set(child.name, child);
-              originalBoneRotations.set(child.uuid, child.rotation.clone());
-            }
-          });
-
-          // Center and scale model
-          const box = new THREE.Box3().setFromObject(currentModel);
-          const size = box.getSize(new THREE.Vector3());
-          const center = box.getCenter(new THREE.Vector3());
-
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const scale = 2 / maxDim;
-          currentModel.scale.multiplyScalar(scale);
-
-          // Recalculate after scaling
-          box.setFromObject(currentModel);
-          box.getCenter(center);
-          currentModel.position.sub(center);
-          currentModel.position.y += (size.y * scale) / 2;
-
-          scene.add(currentModel);
-
-          // Create skeleton helper
-          if (skinnedMesh && skinnedMesh.skeleton) {
-            skeletonHelper = new THREE.SkeletonHelper(currentModel);
-            skeletonHelper.material.linewidth = 2;
-            skeletonHelper.material.color.setHex(0x00ffaa);
-            skeletonHelper.visible = skeletonVisible;
-            scene.add(skeletonHelper);
+    console.log("url", filename.toString(), filename.endsWith(".gltf"), filename.endsWith(".glb"), filename.endsWith(".fbx"));
+    
+    if(filename.endsWith(".gltf") || filename.endsWith(".glb")) {
+      gltfLoader.load(
+          url,
+          (gltf) => {
+            loading.style.display = 'none';
+  
+            currentModel = gltf.scene;
+            principalAnimations = gltf.animations;
+            
+            manageCurrentModelAfterLoad();
+          },
+          (progress) => {
+            const percent = (progress.loaded / progress.total * 100).toFixed(0);
+            loading.querySelector('p').textContent = `Chargement... ${percent}%`;
+          },
+          (error) => {
+            loading.style.display = 'none';
+            console.error('Erreur de chargement GLB:', error);
+            updateInfo('Erreur lors du chargement du fichier GLB.');
           }
+      );
+    }else if(filename.endsWith(".fbx")) {
+      fbxLoader.load(
+          url,
+          (fbx) => {
+            loading.style.display = 'none';
 
-          // Create bone markers
-          createAllBoneMarkers();
+            currentModel = fbx;
+            principalAnimations = fbx.animations;
 
-          // Setup animation mixer
-          mixer = new THREE.AnimationMixer(currentModel);
-
-          if (glbAnimations.length > 0) {
-            updateAnimationsList();
-            playAnimation(0, 'glb');
-          } else {
-            updateAnimationsList();
-            updateInfo('Modèle chargé. Aucune animation GLB trouvée.');
+            manageCurrentModelAfterLoad();
+          },
+          (progress) => {
+            const percent = (progress.loaded / progress.total * 100).toFixed(0);
+            loading.querySelector('p').textContent = `Chargement... ${percent}%`;
+          },
+          (error) => {
+            loading.style.display = 'none';
+            console.error('Erreur de chargement FBX:', error);
+            updateInfo('Erreur lors du chargement du fichier FBX.');
           }
+      );
+    }
+  }
+  
+  function manageCurrentModelAfterLoad() {
+    let skinnedMesh = null;
 
-          // Update bone list UI
-          updateBoneList();
+    // Enable shadows and collect bones
+    currentModel.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+      if (child.isSkinnedMesh && !skinnedMesh) {
+        skinnedMesh = child;
+      }
+      if (child.isBone) {
+        bones.push(child);
+        bonesByName.set(child.name, child);
+        originalBoneRotations.set(child.uuid, child.rotation.clone());
+      }
+    });
 
-          // Enable FBX input
-          setFbxInputEnabled(true);
+    // Center and scale model
+    const box = new THREE.Box3().setFromObject(currentModel);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
 
-          // Adjust camera
-          const distance = Math.max(size.x, size.y, size.z) * scale * 2;
-          camera.position.set(distance, distance * 0.7, distance);
-          controls.target.set(0, (size.y * scale) / 2, 0);
-          controls.update();
-        },
-        (progress) => {
-          const percent = (progress.loaded / progress.total * 100).toFixed(0);
-          loading.querySelector('p').textContent = `Chargement... ${percent}%`;
-        },
-        (error) => {
-          loading.style.display = 'none';
-          console.error('Erreur de chargement GLB:', error);
-          updateInfo('Erreur lors du chargement du fichier GLB.');
-        }
-    );
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 2 / maxDim;
+    currentModel.scale.multiplyScalar(scale);
+
+    // Recalculate after scaling
+    box.setFromObject(currentModel);
+    box.getCenter(center);
+    currentModel.position.sub(center);
+    currentModel.position.y += (size.y * scale) / 2;
+
+    scene.add(currentModel);
+
+    // Create skeleton helper
+    if (skinnedMesh && skinnedMesh.skeleton) {
+      skeletonHelper = new THREE.SkeletonHelper(currentModel);
+      skeletonHelper.material.linewidth = 2;
+      skeletonHelper.material.color.setHex(0x00ffaa);
+      skeletonHelper.visible = skeletonVisible;
+      scene.add(skeletonHelper);
+    }
+
+    // Create bone markers
+    createAllBoneMarkers();
+
+    // Setup animation mixer
+    mixer = new THREE.AnimationMixer(currentModel);
+
+    if (principalAnimations.length > 0) {
+      updateAnimationsList();
+      //playAnimation(0, 'glb');
+    } else {
+      updateAnimationsList();
+      updateInfo('Modèle chargé. Aucune animation GLB trouvée.');
+    }
+
+    // Update bone list UI
+    updateBoneList();
+
+    // Enable FBX input
+    setFbxInputEnabled(true);
+
+    // Adjust camera
+    const distance = Math.max(size.x, size.y, size.z) * scale * 2;
+    camera.position.set(distance, distance * 0.7, distance);
+    controls.target.set(0, (size.y * scale) / 2, 0);
+    controls.update();
   }
 
   // Load FBX file and apply animations to current model
-  function loadFBX(url, filename) {
+  function loadFBXAnimation(url, filename) {
     if (!currentModel || !mixer) {
       updateInfo('Veuillez d\'abord charger un modèle GLB.');
       return;
@@ -933,6 +983,30 @@
     loading.style.display = 'block';
     loading.querySelector('p').textContent = 'Chargement animation FBX...';
 
+    // Remove previous secondary FBX if any
+    if (secondaryFbxModel) {
+      scene.remove(secondaryFbxModel);
+      secondaryFbxModel.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      secondaryFbxModel = null;
+    }
+    if (skeletonHelperFbx) {
+      scene.remove(skeletonHelperFbx);
+      skeletonHelperFbx = null;
+    }
+    if (mixerFbx) {
+      mixerFbx.stopAllAction();
+      mixerFbx = null;
+    }
+
     fbxLoader.load(
         url,
         (fbx) => {
@@ -940,174 +1014,67 @@
 
           console.log("fbx", fbx);
 
+          // Add FBX model to scene
+          secondaryFbxModel = fbx;
+
+          // Enable shadows
+          fbx.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+
+          // Scale and position the FBX model next to the main model
+          const box = new THREE.Box3().setFromObject(fbx);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const scale = 4 / maxDim;
+          fbx.scale.multiplyScalar(scale);
+
+          // Recalculate after scaling
+          box.setFromObject(fbx);
+          box.getCenter(center);
+          fbx.rotation.y += Math.PI / 2; // Rotate to face the same direction
+          fbx.position.sub(center);
+          fbx.position.y += (size.y * scale) / 2;
+          fbx.position.z += (size.z * scale) * 2; // Position to the right of main model
+
+          scene.add(fbx);
+
+          // Create skeleton helper for FBX
+          skeletonHelperFbx = new THREE.SkeletonHelper(fbx);
+          skeletonHelperFbx.material.linewidth = 2;
+          skeletonHelperFbx.material.color.setHex(0xffaa00); // Orange color for FBX
+          skeletonHelperFbx.visible = skeletonVisible;
+          scene.add(skeletonHelperFbx);
+
+          // Create mixer for FBX model and play its animation
+          const fbxAnims = fbx.animations || [];
+          if (fbxAnims.length > 0) {
+            mixerFbx = new THREE.AnimationMixer(fbx);
+            activeAction = mixerFbx.clipAction(fbxAnims[0]);
+            activeAction.play();
+          }
+
           // FBX bones are accessed differently - collect bone names from the loaded FBX
-          const fbxBonesByName = new Map();
+          fbxBonesByName.clear();
 
           fbx.traverse((child) => {
             if (child.isBone) {
               // Remove mixamorig prefix if present
-              const cleanName = child.name.replace(/^mixamorig[_:]?/i, '');
-              fbxBonesByName.set(child.name, cleanName);
-            }
-          });
-
-          // Bone mapping from Mixamo FBX to GLB model bones
-          const boneMapping = {
-            // Racine et bassin
-            "Hips": ["Pelvis", "Hip"],             // ou "Pelvis"
-            
-            // Colonne vertébrale
-            "Spine": ["Waist"],
-            "Spine1": ["Spine01"],
-            "Spine2": ["Spine02"],
-
-            // Cou et tête
-            "Neck": ["NeckTwist01", "NeckTwist02"],     // ou "NeckTwist02"
-            "Head": ["Head"],
-
-            // Jambe gauche
-            "LeftUpLeg": ["R_Thigh", "R_Thigh_Twist01", "R_Thigh_Twist02"],
-            "LeftLeg": ["R_Calf"],
-            "LeftFoot": ["R_Foot"],
-
-            // Jambe droite
-            "RightUpLeg": ["L_Thigh", "L_Thigh_Twist01", "L_Thigh_Twist02"],
-            "RightLeg": ["L_Calf"],
-            "RightFoot": ["L_Foot"],
-
-            // Bras gauche
-            "LeftShoulder": ["R_Clavicle"],
-            "LeftArm": ["R_Upperarm"],
-            "LeftForeArm": ["R_Forearm"],
-            "LeftHand": ["R_Hand"],
-
-            // Bras droit
-            "RightShoulder": ["L_Clavicle"],
-            "RightArm": ["L_Upperarm"],
-            "RightForeArm": ["L_Forearm"],
-            "RightHand": ["L_Hand"]
-          };
-
-          const fbxAnims = fbx.animations || [];
-
-          if (fbxAnims.length === 0) {
-            updateInfo('Aucune animation trouvée dans le fichier FBX.');
-            return;
-          }
-
-          // Remap animations to use current model's bones
-          fbxAnimations = [];
-
-          fbxAnims.forEach((clip, clipIndex) => {
-            const remappedTracks = [];
-
-            clip.tracks.forEach(track => {
-              // Parse track name to get bone name and property
-              // FBX track names are usually like "mixamorigBoneName.property"
-              const trackNameParts = track.name.split('.');
-              const fbxBoneName = trackNameParts[0];
-              // Clean the bone name (remove mixamorig prefix)
-              const cleanBoneName = fbxBoneName.replace(/^mixamorig[_:]?/i, '');
-              const mappedBoneName = boneMapping[cleanBoneName];
-              const property = trackNameParts.slice(1).join('.');
-
-              for(let i=0; i<mappedBoneName?.length; i++) {
-                const testBoneName = mappedBoneName[i];
-                const targetBone = bonesByName.get(testBoneName);
-  
-                if (targetBone && property !== "position") {
-                  // Create new track pointing to our model's bone
-                  const newTrackName = `${targetBone.uuid}.${property}`;
-  
-                  let newTrack;
-                  if (track instanceof THREE.VectorKeyframeTrack) {
-                    newTrack = new THREE.VectorKeyframeTrack(
-                        newTrackName,
-                        track.times,
-                        track.values
-                    );
-                  } else if (track instanceof THREE.QuaternionKeyframeTrack) {
-                    // Apply 180° rotation correction (negate X and W components)
-                    const correctedValues = new Float32Array(track.values.length);
-                    for (let i = 0; i < track.values.length; i += 4) {
-                      correctedValues[i] = track.values[i];       // -x
-                      correctedValues[i + 1] = track.values[i + 1]; // y
-                      correctedValues[i + 2] = track.values[i + 2]; // z
-                      correctedValues[i + 3] = track.values[i + 3]; // -w
-                    }
-
-                    if(cleanBoneName.includes("Twist") ||
-                        cleanBoneName === "NeckTwist01" ||
-                      cleanBoneName === "NeckTwist02" ||
-                      cleanBoneName === "R_Thigh_Twist01" ||
-                      cleanBoneName === "R_Thigh_Twist02" ||
-                      cleanBoneName === "L_Thigh_Twist01" ||
-                      cleanBoneName === "L_Thigh_Twist02")
-                    {
-                      console.log("Applying 180° Y rotation to twist bone");
-                      for (let i = 0; i < track.values.length; i += 4) {
-                        const x = track.values[i];
-                        const y = track.values[i + 1];
-                        const z = track.values[i + 2];
-                        const w = track.values[i + 3];
-                        correctedValues[i] = -z;      // new x
-                        correctedValues[i + 1] = w;   // new y
-                        correctedValues[i + 2] = -x;  // new z
-                        correctedValues[i + 3] = -y;  // new w
-                      }
-                    }
-
-                    if(testBoneName === "Hip") {
-                      // Apply 90° rotation around X axis: multiply by quaternion (0.7071, 0, 0, 0.7071)
-                      const s = Math.SQRT1_2; // 0.7071 = sin(45°) = cos(45°)
-                      for (let i = 0; i < track.values.length; i += 4) {
-                        const x = track.values[i];
-                        const y = track.values[i + 1];
-                        const z = track.values[i + 2];
-                        const w = track.values[i + 3];
-                        correctedValues[i] = s * (w + x);      // new x
-                        correctedValues[i + 1] = s * (y - z);  // new y
-                        correctedValues[i + 2] = s * (y + z);  // new z
-                        correctedValues[i + 3] = s * (w - x);  // new w
-                      }
-                    }
-                    
-                    newTrack = new THREE.QuaternionKeyframeTrack(
-                        newTrackName,
-                        track.times,
-                        correctedValues
-                    );
-                  } else if (track instanceof THREE.NumberKeyframeTrack) {
-                    newTrack = new THREE.NumberKeyframeTrack(
-                        newTrackName,
-                        track.times,
-                        track.values
-                    );
-                  } else {
-                    // Generic KeyframeTrack
-                    newTrack = new THREE.KeyframeTrack(
-                        newTrackName,
-                        track.times,
-                        track.values
-                    );
-                  }
-  
-                  remappedTracks.push(newTrack);
-                }
+              const cleanName = child.name.replace(/^mixamorig[_:1-9]?/i, '');
+              if(!fbxBonesByName.has(cleanName)) {
+                fbxBonesByName.set(cleanName, child);
               }
-            });
-
-            if (remappedTracks.length > 0) {
-              const remappedClip = new THREE.AnimationClip(
-                  clip.name || `FBX_Animation_${clipIndex + 1}`,
-                  clip.duration,
-                  remappedTracks
-              );
-              remappedClip.userData = { source: 'fbx' };
-              fbxAnimations.push(remappedClip);
             }
           });
+          
+          console.log("fbxBonesByName", fbxBonesByName);
 
+          
           if (fbxAnimations.length > 0) {
             // Update animations list
             updateAnimationsList();
@@ -1136,22 +1103,165 @@
     );
   }
 
+  
+  const boneMapping = {
+    // // Racine et bassin
+    "Hips": ["Hip", "Pelvis"],             // ou "Pelvis"
+    //
+    // // Colonne vertébrale
+    "Spine": ["Waist"],
+    "Spine1": ["Spine01"],
+    "Spine2": ["Spine02"],
+    // "Spine": ["Spine01"],
+    // "Spine2": ["Spine02"],
+    //
+    // // Cou et tête
+    "Neck": ["NeckTwist01", "NeckTwist02"],     // ou "NeckTwist02"
+    "Head": ["Head"],
+    //
+    // // Jambe gauche
+    "LeftUpLeg": ["L_Thigh"/*, "L_Thigh_Twist01", "L_Thigh_Twist02"*/],
+    "LeftLeg": ["L_Calf"],
+    "LeftFoot": ["L_Foot"],
+
+    // Jambe droite
+    "RightUpLeg": ["R_Thigh"/*, "R_Thigh_Twist01", "R_Thigh_Twist02"*/],
+    "RightLeg": ["R_Calf"],
+    "RightFoot": ["R_Foot"],
+    //
+    // // Bras gauche
+    "LeftShoulder": ["L_Clavicle"],
+    "LeftArm": ["L_Upperarm"],
+    "LeftForeArm": ["L_Forearm"],
+    "LeftHand": ["L_Hand"],
+    //
+    // // Bras droit
+    "RightShoulder": ["R_Clavicle"],
+    "RightArm": ["R_Upperarm"],
+    "RightForeArm": ["R_Forearm"],
+    "RightHand": ["R_Hand"]
+  };
+  
+  window.boneMapping = boneMapping;
+  
+  function matchFbxAnimationToPrincipal(){
+    // Bone mapping from Mixamo FBX to GLB model bones
+    
+    const group = new THREE.Group();
+    
+    bonesByName.forEach((bone) => {
+      const originalRot = originalBoneRotations.get(bone.uuid);
+      if (originalRot) {
+        bone.rotation.copy(originalRot);
+      }
+    })
+    
+    fbxBonesByName.forEach((bone, name) => {
+      const mappedBoneName = boneMapping[name];
+      if(mappedBoneName) {
+        for(let i=0; i<mappedBoneName.length; i++) {
+          const testBoneName = mappedBoneName[i];
+          const targetBone = bonesByName.get(testBoneName);
+          if (targetBone) {
+            alignBones(bone, targetBone);
+          }
+        }
+      }
+      else if(bonesByName.get(name)){
+        // Direct name match
+        const targetBone = bonesByName.get(name);
+        alignBones(bone, targetBone);
+      }
+    })
+
+    bonesByName.get("NeckTwist01").rotation.copy(fbxBonesByName.get("Neck").rotation);
+    bonesByName.get("L_Clavicle").rotateY(-Math.PI/2);
+    bonesByName.get("R_Clavicle").rotateY(Math.PI/2);
+    
+    rotateOnParent(bonesByName.get("R_Upperarm"), 0, -Math.PI/2, 0);
+    bonesByName.get("R_UpperarmTwist01").rotateY(Math.PI/2);
+    bonesByName.get("R_Hand").rotateY(Math.PI/2);
+    
+    rotateOnParent(bonesByName.get("L_Upperarm"), 0, Math.PI/2, 0);
+    bonesByName.get("L_UpperarmTwist01").rotateY(-Math.PI/2);
+    bonesByName.get("L_Hand").rotateY(-Math.PI/2);
+
+    bonesByName.get("Pelvis").rotateY(Math.PI);
+    rotateOnParent(bonesByName.get("L_Thigh"), 0, Math.PI, 0);
+    rotateOnParent(bonesByName.get("R_Thigh"), 0, Math.PI, 0);
+    bonesByName.get("Waist").rotateY(Math.PI);
+
+    rotateOnParent(bonesByName.get("L_Clavicle"), 0, Math.PI, 0);
+    rotateOnParent(bonesByName.get("R_Clavicle"), 0, Math.PI, 0);
+  }
+  
+  function rotateOnParent(bone, rx, ry, rz) {
+    const parent = bone.parent;
+    const group = new THREE.Group();
+    parent.add(group);
+    group.position.copy(bone.position);
+    group.updateWorldMatrix(false, false);
+
+    group.attach(bone);
+    group.rotateX(rx);
+    group.rotateY(ry);
+    group.rotateZ(rz);
+    parent.attach(bone);
+  }
+
+  // On prépare des objets réutilisables pour éviter le Garbage Collection (performance)
+  const mSourceRot = new THREE.Matrix4();
+  const mParentInvRot = new THREE.Matrix4();
+  const mLocalTarget = new THREE.Matrix4();
+
+  /**
+   * Aligne la rotation mondiale de boneCible sur celle de boneSource
+   */
+  function alignBones(boneSource, boneCible) {
+    // 1. Extraire la rotation mondiale pure de la SOURCE
+    // .extractRotation ignore le scale et la position de la matrixWorld
+    mSourceRot.extractRotation(boneSource.matrixWorld);
+
+    const parentCible = boneCible.parent;
+
+    if (parentCible) {
+      // 2. Extraire la rotation mondiale du PARENT de la cible
+      mParentInvRot.extractRotation(parentCible.matrixWorld);
+
+      // 3. Inverser la rotation du parent
+      mParentInvRot.invert();
+
+      // 4. Calculer la rotation locale : InverseParent * Source
+      // Cela nous donne la rotation nécessaire dans l'espace du parent
+      mLocalTarget.multiplyMatrices(mParentInvRot, mSourceRot);
+
+      // 5. Appliquer à l'os cible
+      boneCible.quaternion.setFromRotationMatrix(mLocalTarget);
+    } else {
+      // Si pas de parent, on applique directement la rotation extraite
+      boneCible.quaternion.setFromRotationMatrix(mSourceRot);
+    }
+
+    // Important : mettre à jour pour les futurs calculs d'enfants dans la même frame
+    boneCible.updateMatrixWorld();
+  }
+
   // Play specific animation
   function playAnimation(index, source = 'glb') {
     if (!mixer) return;
 
-    const animations = source === 'glb' ? glbAnimations : fbxAnimations;
+    const animations = source === 'glb' ? principalAnimations : fbxAnimations;
     if (index >= animations.length) return;
 
     const clip = animations[index];
 
     if (activeAction) {
-      activeAction.fadeOut(0.3);
+      activeAction.fadeOut(2.0);
     }
 
     activeAction = mixer.clipAction(clip);
     activeAction.reset();
-    activeAction.fadeIn(0.3);
+    activeAction.fadeIn(2.0);
     activeAction.play();
 
     if (!isPlaying) {
@@ -1205,6 +1315,10 @@
       skeletonHelper.visible = skeletonVisible;
     }
 
+    if (skeletonHelperFbx) {
+      skeletonHelperFbx.visible = skeletonVisible;
+    }
+
     boneMarkersGroup.visible = skeletonVisible;
   }
 
@@ -1213,7 +1327,8 @@
     const listContainer = document.getElementById('animations-list');
     listContainer.innerHTML = '';
 
-    const hasGlbAnims = glbAnimations.length > 0;
+    console.log("principalAnimations", principalAnimations)
+    const hasGlbAnims = principalAnimations.length > 0;
     const hasFbxAnims = fbxAnimations.length > 0;
 
     if (!hasGlbAnims && !hasFbxAnims) {
@@ -1236,7 +1351,7 @@
       glbButtons.style.flexWrap = 'wrap';
       glbButtons.style.gap = '8px';
 
-      glbAnimations.forEach((clip, index) => {
+      principalAnimations.forEach((clip, index) => {
         const btn = document.createElement('button');
         btn.className = 'anim-btn';
         btn.textContent = clip.name || `Animation ${index + 1}`;
@@ -1280,7 +1395,7 @@
     }
   }
 
-  // Update bone list UI
+  // Update bone list UI with hierarchy
   function updateBoneList() {
     const listContainer = document.getElementById('bone-list');
     listContainer.innerHTML = '';
@@ -1291,7 +1406,27 @@
       return;
     }
 
+    // Build bone index map
+    const boneIndexMap = new Map();
     bones.forEach((bone, index) => {
+      boneIndexMap.set(bone, index);
+    });
+
+    // Find root bones (bones whose parent is not in the bones array)
+    const rootBones = bones.filter(bone => {
+      let parent = bone.parent;
+      while (parent) {
+        if (boneIndexMap.has(parent)) return false;
+        parent = parent.parent;
+      }
+      return true;
+    });
+
+    // Recursive function to add bone and its children
+    function addBoneToList(bone, depth) {
+      const index = boneIndexMap.get(bone);
+      if (index === undefined) return;
+
       const item = document.createElement('div');
       item.className = 'bone-item';
 
@@ -1299,10 +1434,32 @@
         item.classList.add('twist-bone');
       }
 
-      item.textContent = bone.name || `Bone ${index + 1}`;
+      // Add indentation
+      for (let i = 0; i < depth; i++) {
+        const indent = document.createElement('span');
+        indent.className = 'bone-indent';
+        item.appendChild(indent);
+      }
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = bone.name || `Bone ${index + 1}`;
+      item.appendChild(nameSpan);
+
       item.dataset.index = index;
       item.addEventListener('click', () => selectBone(index));
       listContainer.appendChild(item);
+
+      // Add children (only bones that are in our bones array)
+      bone.children.forEach(child => {
+        if (child.isBone && boneIndexMap.has(child)) {
+          addBoneToList(child, depth + 1);
+        }
+      });
+    }
+
+    // Start from root bones
+    rootBones.forEach(rootBone => {
+      addBoneToList(rootBone, 0);
     });
   }
 
@@ -1311,8 +1468,8 @@
     selectedBone = bones[index];
     selectedBoneIndex = index;
 
-    document.querySelectorAll('.bone-item').forEach((item, i) => {
-      item.classList.toggle('selected', i === index);
+    document.querySelectorAll('.bone-item').forEach((item) => {
+      item.classList.toggle('selected', parseInt(item.dataset.index) === index);
     });
 
     const selectedItem = document.querySelector(`.bone-item[data-index="${index}"]`);
@@ -1408,11 +1565,11 @@
   }
 
   // Event listeners
-  document.getElementById('glb-input').addEventListener('change', (e) => {
+  document.getElementById('modele-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
-      loadGLB(url);
+      loadPrincipal(url, file.name);
     }
   });
 
@@ -1420,7 +1577,7 @@
     const file = e.target.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
-      loadFBX(url, file.name);
+      loadFBXAnimation(url, file.name);
     }
   });
 
@@ -1466,10 +1623,10 @@
     if (file) {
       if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
         const url = URL.createObjectURL(file);
-        loadGLB(url);
+        loadPrincipal(url);
       } else if (file.name.endsWith('.fbx') && currentModel) {
         const url = URL.createObjectURL(file);
-        loadFBX(url, file.name);
+        loadFBXAnimation(url, file.name);
       }
     }
   });
@@ -1487,7 +1644,14 @@
 
     const delta = clock.getDelta();
 
-    if (mixer) {
+    // Update secondary FBX animation
+    if (mixerFbx) {
+      mixerFbx.update(delta);
+      if(isPlaying){
+        matchFbxAnimationToPrincipal();
+      }
+    }
+    else if (mixer) {
       mixer.update(delta);
 
       if (isPlaying && selectedBone) {
