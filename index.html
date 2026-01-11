@@ -1174,6 +1174,7 @@
       }
     })
 
+    // bonesByName.get("Head").rotation.copy(fbxBonesByName.get("Head").rotation);
     bonesByName.get("NeckTwist01").rotation.copy(fbxBonesByName.get("Neck").rotation);
     bonesByName.get("L_Clavicle").rotateY(-Math.PI/2);
     bonesByName.get("R_Clavicle").rotateY(Math.PI/2);
@@ -1193,6 +1194,26 @@
 
     rotateOnParent(bonesByName.get("L_Clavicle"), 0, Math.PI, 0);
     rotateOnParent(bonesByName.get("R_Clavicle"), 0, Math.PI, 0);
+
+    bonesByName.get("Head").rotation.x *= -1;
+    bonesByName.get("Head").rotation.y *= -1;
+    bonesByName.get("Head").rotation.z *= -1;
+
+    bonesByName.get("NeckTwist01").rotation.x *= -1;
+    bonesByName.get("NeckTwist02").rotation.x *= -1;
+    bonesByName.get("NeckTwist01").rotation.y *= -1;
+    bonesByName.get("NeckTwist02").rotation.y *= -1;
+    bonesByName.get("NeckTwist01").rotation.z *= -1;
+    bonesByName.get("NeckTwist02").rotation.z *= -1;
+
+    bonesByName.get("Spine01").rotation.x *= -1;
+    bonesByName.get("Spine01").rotation.y *= -1;
+    bonesByName.get("Spine01").rotation.z *= -1;
+
+    // bonesByName.get("Spine02").rotation.x *= -1;
+    // bonesByName.get("Spine02").rotation.y *= -1;
+    // bonesByName.get("Spine02").rotation.z *= -1;
+
   }
   
   function rotateOnParent(bone, rx, ry, rz) {
