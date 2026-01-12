@@ -1,0 +1,14 @@
+{
+  "name": "glb-bones-editor",
+  "version": "1.0.0",
+  "main": "mixamo-to-tripo.js",
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

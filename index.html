@@ -568,6 +568,14 @@
       }
   }
 </script>
+<!--<script type="importmap">-->
+<!--  {-->
+<!--      "imports": {-->
+<!--          "three": "./node_modules/three/build/three.module.js",-->
+<!--          "three/addons/": "./node_modules/three/examples/jsm/"-->
+<!--      }-->
+<!--  }-->
+<!--</script>-->
 
 <script type="module">
   import * as THREE from 'three';
@@ -937,7 +945,7 @@
     scene.add(currentModel);
     
     currentModel.updateWorldMatrix(true, true);
-    hipsOriginalPosition = bonesByName.get("Hip").getWorldPosition(new THREE.Vector3());
+    hipsOriginalPosition = bonesByName.get("Hip")?.getWorldPosition(new THREE.Vector3());
 
     // Create skeleton helper
     if (skinnedMesh && skinnedMesh.skeleton) {
@@ -1123,12 +1131,12 @@
     // // Jambe gauche
     "LeftUpLeg": ["L_Thigh"/*, "L_Thigh_Twist01", "L_Thigh_Twist02"*/],
     "LeftLeg": ["L_Calf"],
-    "LeftFoot": ["L_Foot"],
+    "LeftToeBase": ["L_Foot"],
 
     // Jambe droite
     "RightUpLeg": ["R_Thigh"/*, "R_Thigh_Twist01", "R_Thigh_Twist02"*/],
     "RightLeg": ["R_Calf"],
-    "RightFoot": ["R_Foot"],
+    "RightToeBase": ["R_Foot"],
     //
     // // Bras gauche
     "LeftShoulder": ["L_Clavicle"],
