@@ -599,6 +599,59 @@
             rgb(255,255,0) 75%,
             rgb(255,0,0) 100%);
       }
+
+      /* Joint edit controls */
+      #joint-edit-controls {
+          display: none;
+          flex-direction: column;
+          gap: 12px;
+      }
+
+      #joint-edit-controls.visible {
+          display: flex;
+      }
+
+      #joint-edit-controls h4 {
+          color: #ffaa6a;
+          margin-bottom: 5px;
+      }
+
+      #joint-bone-name {
+          background: #2a2a4a;
+          padding: 10px;
+          border-radius: 6px;
+          font-weight: 500;
+          color: #ffaa6a;
+          text-align: center;
+      }
+
+      #joint-hint {
+          padding: 10px;
+          background: #3a2e1e;
+          border-radius: 6px;
+          font-size: 11px;
+          color: #ccc;
+          line-height: 1.5;
+      }
+
+      #joint-hint strong {
+          color: #ffaa6a;
+      }
+
+      #reset-joints-btn {
+          background: #6a4a3a;
+          border: none;
+          color: white;
+          padding: 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: background 0.2s;
+      }
+
+      #reset-joints-btn:hover {
+          background: #8a5a4a;
+      }
   </style>
 </head>
 <body>
@@ -633,6 +686,7 @@
   <div id="mode-toggle">
     <button id="mode-pose-btn" class="mode-btn active">✋ Pose</button>
     <button id="mode-paint-btn" class="mode-btn">🎨 Weight Paint</button>
+    <button id="mode-joints-btn" class="mode-btn">🔧 Joints</button>
   </div>
 
   <div id="bone-list">
@@ -705,6 +759,19 @@
       <strong>Clic gauche</strong> = ajout de poids — <strong>Shift+clic</strong> = retrait<br>
       Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
     </div>
+  </div>
+
+  <div id="joint-edit-controls">
+    <div id="joint-bone-name">Aucun bone sélectionné</div>
+    <h4>🔧 Édition de joint</h4>
+
+    <div id="joint-hint">
+      Glissez le gizmo de translation pour replacer le pivot.<br>
+      <strong>Les vertex et les joints enfants restent en place.</strong><br>
+      Les rotations sont temporairement remises à 0 (bind pose) le temps de l'édition.
+    </div>
+
+    <button id="reset-joints-btn">🔄 Reset All Joints</button>
   </div>
 
   <div id="skeleton-legend">
@@ -903,6 +970,53 @@
   const _vWorld = new THREE.Vector3();
   window.skinnedMeshes = skinnedMeshes;
 
+  // ============================================================
+  // JOINT FOLLOW MAP — à remplir par toi
+  // ============================================================
+  // Quand on déplace un joint en mode "Joints", les bones listés ici
+  // suivent le mouvement (même delta en world). Utile pour les bones
+  // non sélectionnables (twist, etc.) qui doivent rester collés à leur "vrai" joint.
+  //
+  // Format : { "BoneSelectionnable": ["BoneLie1", "BoneLie2", ...] }
+  // Les noms doivent matcher EXACTEMENT ceux du skeleton (cf. la liste à droite).
+  // Si un bone lié est descendant du bone draggé, il suivra automatiquement
+  // par héritage — l'inscrire ici met juste à jour son boneInverse pour
+  // que les vertex skinnés dessus restent figés.
+  const linkedJoints = {
+    "L_Calf":   ["L_CalfTwist01", "L_CalfTwist02"],
+    "R_Calf":   ["R_CalfTwist01", "R_CalfTwist02"],
+    "L_Thigh":  ["L_ThighTwist01", "L_ThighTwist02"],
+    "R_Thigh":  ["R_ThighTwist01", "R_ThighTwist02"],
+    "L_Upperarm": ["L_UpperarmTwist01"],
+    "R_Upperarm": ["R_UpperarmTwist01"],
+    "L_Forearm":  ["L_ForearmTwist01"],
+    "R_Forearm":  ["R_ForearmTwist01"],
+  };
+  window.linkedJoints = linkedJoints;
+
+  // Joint edit state
+  let jointEditMode = false;
+  let savedRotationsForJointEdit = null; // Map<boneUuid, Euler>
+  // Snapshot par drag (figé au mouseDown, lu à chaque change)
+  const jointDragSnapshot = {
+    bone: null,                     // bone draggé (B)
+    followSet: new Set(),           // {B} ∪ bones liés via linkedJoints
+    worldStart: new Map(),          // bone -> Vector3 (position monde au début du drag)
+    skinningPerMesh: new Map(),     // bone -> Map<skinnedMesh, Matrix4> (S = world * boneInverse)
+    childWorldPositions: new Map(), // child bone (hors followSet) -> Vector3
+  };
+  // Pour Reset All Joints
+  const originalBoneInverses = new Map();  // skinnedMesh -> Matrix4[]
+  const originalBonePositions = new Map(); // bone.uuid -> Vector3
+
+  // Direct drag state pour le mode joints (sans gizmo)
+  let isDraggingJoint = false;
+  const _jdPlane = new THREE.Plane();           // plan parallèle à la caméra, passant par le bone
+  const _jdGrabOffset = new THREE.Vector3();    // offset entre le bone et le hit initial sur le plan
+  const _jdCamDir = new THREE.Vector3();
+  const _jdTmpVec = new THREE.Vector3();
+  const _jdParentInv = new THREE.Matrix4();
+
   // Brush helper (anneau qui suit la souris en paint mode)
   const brushHelper = new THREE.Mesh(
     new THREE.RingGeometry(0.94, 1.0, 48),
@@ -1028,6 +1142,9 @@
     if (weightPaintMode) {
       exitWeightPaintMode();
     }
+    if (jointEditMode) {
+      exitJointEditMode();
+    }
 
     // Remove previous model
     if (currentModel) {
@@ -1052,6 +1169,13 @@
     });
     paintMaterials.clear();
     originalMaterials.clear();
+    originalBoneInverses.clear();
+    originalBonePositions.clear();
+    jointDragSnapshot.bone = null;
+    jointDragSnapshot.followSet.clear();
+    jointDragSnapshot.worldStart.clear();
+    jointDragSnapshot.skinningPerMesh.clear();
+    jointDragSnapshot.childWorldPositions.clear();
 
     // Reset rest pose toggle
     if (atRestPose) {
@@ -1159,7 +1283,13 @@
       }
     });
     const skinnedMesh = skinnedMeshes[0] || null;
-    
+
+    // Snapshot pour "Reset All Joints"
+    for (const sm of skinnedMeshes) {
+      originalBoneInverses.set(sm, sm.skeleton.boneInverses.map(m => m.clone()));
+    }
+    bones.forEach(b => originalBonePositions.set(b.uuid, b.position.clone()));
+
     // Center and scale model
     const box = new THREE.Box3().setFromObject(currentModel);
     const size = box.getSize(new THREE.Vector3());
@@ -1793,6 +1923,11 @@
       document.getElementById('rotation-controls').classList.remove('visible');
       updatePaintBoneName();
       refreshWeightColors();
+    } else if (jointEditMode) {
+      // En mode joints : pas de gizmo, drag direct sur le marker
+      transformControls.detach();
+      document.getElementById('rotation-controls').classList.remove('visible');
+      updateJointBoneName();
     } else {
       document.getElementById('rotation-controls').classList.add('visible');
       transformControls.attach(selectedBone);
@@ -1816,6 +1951,9 @@
     if (weightPaintMode) {
       document.getElementById('paint-bone-name').textContent = 'Aucun bone sélectionné';
       refreshWeightColors();
+    }
+    if (jointEditMode) {
+      document.getElementById('joint-bone-name').textContent = 'Aucun bone sélectionné';
     }
   }
 
@@ -2343,6 +2481,249 @@
     }
   }
 
+  // ============================================================
+  // JOINT EDIT
+  // ============================================================
+  //
+  // Principe : on déplace le pivot d'un bone via un gizmo de translation,
+  // mais on veut que les vertex et les joints enfants ne bougent PAS.
+  //
+  // Pour le bone B draggé : la matrice de skinning S = bone.matrixWorld * boneInverse
+  // doit rester constante. On recalcule donc boneInverse à chaque frame :
+  //   boneInverse_new = matrixWorld_new⁻¹ · S_snapshot
+  //
+  // Pour les enfants directs : on veut que leur position MONDE reste figée
+  // (=> Blender Edit-mode behaviour). On recompose donc leur position locale
+  // pour annuler le déplacement du parent. Leur matrixWorld reste inchangé,
+  // donc leurs boneInverses n'ont pas besoin d'être touchés.
+
+  // Helpers
+  function getLinkedBones(bone) {
+    const names = linkedJoints[bone.name];
+    if (!names || !names.length) return [];
+    const out = [];
+    for (const n of names) {
+      const b = bonesByName.get(n);
+      if (b && b !== bone) out.push(b);
+    }
+    return out;
+  }
+  function isDescendantOf(child, ancestor) {
+    let p = child.parent;
+    while (p) {
+      if (p === ancestor) return true;
+      p = p.parent;
+    }
+    return false;
+  }
+  function depthFromRoot(bone) {
+    let d = 0;
+    let p = bone.parent;
+    while (p) { d++; p = p.parent; }
+    return d;
+  }
+
+  function snapshotJointDrag(bone) {
+    jointDragSnapshot.bone = bone;
+    jointDragSnapshot.followSet.clear();
+    jointDragSnapshot.worldStart.clear();
+    jointDragSnapshot.skinningPerMesh.clear();
+    jointDragSnapshot.childWorldPositions.clear();
+
+    const followSet = jointDragSnapshot.followSet;
+    followSet.add(bone);
+    for (const linked of getLinkedBones(bone)) followSet.add(linked);
+
+    // Mettre à jour les matrices monde pour des snapshots cohérents
+    for (const X of followSet) X.updateMatrixWorld(true);
+
+    // Pour chaque bone du followSet : world position + skinning matrix par mesh
+    for (const X of followSet) {
+      jointDragSnapshot.worldStart.set(X, X.getWorldPosition(new THREE.Vector3()));
+
+      const perMesh = new Map();
+      for (const sm of skinnedMeshes) {
+        const idx = sm.skeleton.bones.indexOf(X);
+        if (idx < 0) continue;
+        const S = new THREE.Matrix4().multiplyMatrices(
+          X.matrixWorld,
+          sm.skeleton.boneInverses[idx]
+        );
+        perMesh.set(sm, S);
+      }
+      jointDragSnapshot.skinningPerMesh.set(X, perMesh);
+    }
+
+    // Enfants directs de chaque bone du followSet, hors followSet → à piner
+    for (const X of followSet) {
+      for (const child of X.children) {
+        if (!child.isBone) continue;
+        if (followSet.has(child)) continue;
+        jointDragSnapshot.childWorldPositions.set(
+          child,
+          child.getWorldPosition(new THREE.Vector3())
+        );
+      }
+    }
+  }
+
+  const _jointInv = new THREE.Matrix4();
+  const _jointTmpVec = new THREE.Vector3();
+  const _jointDelta = new THREE.Vector3();
+
+  function applyJointDragCompensation() {
+    const B = jointDragSnapshot.bone;
+    if (!B) return;
+
+    // 1. Calcul du delta (translation monde) appliqué au bone draggé
+    B.updateMatrixWorld(true);
+    B.getWorldPosition(_jointTmpVec);
+    _jointDelta.copy(_jointTmpVec).sub(jointDragSnapshot.worldStart.get(B));
+
+    // 2. Translater manuellement les bones liés QUI NE SONT PAS descendants de B
+    //    (les descendants suivent par héritage du parent — il suffira de mettre
+    //    à jour leur boneInverse au step 3 pour figer leurs vertex).
+    //    Ordre racine→feuilles pour que parent.matrixWorld soit à jour.
+    const toTranslate = [];
+    for (const X of jointDragSnapshot.followSet) {
+      if (X === B) continue;
+      if (isDescendantOf(X, B)) continue;
+      toTranslate.push(X);
+    }
+    toTranslate.sort((a, b) => depthFromRoot(a) - depthFromRoot(b));
+
+    for (const X of toTranslate) {
+      const parent = X.parent;
+      if (!parent) continue;
+      parent.updateMatrixWorld(true);
+      _jointInv.copy(parent.matrixWorld).invert();
+      _jointTmpVec.copy(jointDragSnapshot.worldStart.get(X)).add(_jointDelta);
+      _jointTmpVec.applyMatrix4(_jointInv);
+      X.position.copy(_jointTmpVec);
+      X.updateMatrixWorld(true);
+    }
+
+    // 3. Mettre à jour les boneInverses pour TOUT le followSet :
+    //    boneInverse_new = matrixWorld_new⁻¹ · S_snapshot ⇒ S reste constant ⇒ vertex figés.
+    for (const X of jointDragSnapshot.followSet) {
+      X.updateMatrixWorld(true);
+      const perMesh = jointDragSnapshot.skinningPerMesh.get(X);
+      if (!perMesh || perMesh.size === 0) continue;
+      _jointInv.copy(X.matrixWorld).invert();
+      for (const [sm, S_snapshot] of perMesh) {
+        const idx = sm.skeleton.bones.indexOf(X);
+        if (idx < 0) continue;
+        sm.skeleton.boneInverses[idx].multiplyMatrices(_jointInv, S_snapshot);
+      }
+    }
+
+    // 4. Piner les enfants hors followSet à leur position monde initiale
+    for (const [child, savedWorldPos] of jointDragSnapshot.childWorldPositions) {
+      const parent = child.parent;
+      if (!parent) continue;
+      parent.updateMatrixWorld(true);
+      _jointInv.copy(parent.matrixWorld).invert();
+      _jointTmpVec.copy(savedWorldPos).applyMatrix4(_jointInv);
+      child.position.copy(_jointTmpVec);
+      child.updateMatrixWorld(true);
+    }
+  }
+
+  function enterJointEditMode() {
+    if (!skinnedMeshes.length) {
+      updateInfo('Aucun mesh skinné — impossible de passer en édition de joints.');
+      return;
+    }
+    if (weightPaintMode) exitWeightPaintMode();
+
+    jointEditMode = true;
+
+    // Sauver la pose courante puis appliquer la bind pose (rotations d'origine).
+    // ATTENTION : la bind pose n'est PAS rotation (0,0,0) — c'est la rotation
+    // initiale stockée dans le GLB pour chaque bone (cf. originalBoneRotations).
+    savedRotationsForJointEdit = new Map();
+    bones.forEach(b => {
+      savedRotationsForJointEdit.set(b.uuid, b.rotation.clone());
+      const bind = originalBoneRotations.get(b.uuid);
+      if (bind) b.rotation.copy(bind);
+    });
+
+    // Geler les animations
+    if (mixer) mixer.timeScale = 0;
+    if (mixerFbx) mixerFbx.timeScale = 0;
+
+    // Pas de gizmo en mode joints — on draggera directement le marker à la souris
+    transformControls.detach();
+
+    document.getElementById('rotation-controls').classList.remove('visible');
+    document.getElementById('joint-edit-controls').classList.add('visible');
+    document.getElementById('mode-pose-btn').classList.remove('active');
+    document.getElementById('mode-paint-btn').classList.remove('active');
+    document.getElementById('mode-joints-btn').classList.add('active');
+
+    updateJointBoneName();
+  }
+
+  function exitJointEditMode() {
+    if (!jointEditMode) return;
+    jointEditMode = false;
+    isDraggingJoint = false;
+    controls.enabled = true;
+
+    // Restaurer les rotations
+    if (savedRotationsForJointEdit) {
+      bones.forEach(b => {
+        const r = savedRotationsForJointEdit.get(b.uuid);
+        if (r) b.rotation.copy(r);
+      });
+      savedRotationsForJointEdit = null;
+    }
+
+    if (mixer) mixer.timeScale = 1;
+    if (mixerFbx) mixerFbx.timeScale = 1;
+
+    // Reset snapshot
+    jointDragSnapshot.bone = null;
+    jointDragSnapshot.followSet.clear();
+    jointDragSnapshot.worldStart.clear();
+    jointDragSnapshot.skinningPerMesh.clear();
+    jointDragSnapshot.childWorldPositions.clear();
+
+    document.getElementById('joint-edit-controls').classList.remove('visible');
+    document.getElementById('mode-joints-btn').classList.remove('active');
+    document.getElementById('mode-pose-btn').classList.add('active');
+
+    if (selectedBone) {
+      document.getElementById('rotation-controls').classList.add('visible');
+      transformControls.attach(selectedBone);
+    } else {
+      transformControls.detach();
+    }
+  }
+
+  function updateJointBoneName() {
+    const el = document.getElementById('joint-bone-name');
+    if (!el) return;
+    el.textContent = selectedBone
+      ? (selectedBone.name || `Bone ${selectedBoneIndex + 1}`)
+      : 'Aucun bone sélectionné';
+  }
+
+  function resetAllJoints() {
+    for (const sm of skinnedMeshes) {
+      const orig = originalBoneInverses.get(sm);
+      if (!orig) continue;
+      orig.forEach((m, i) => {
+        if (sm.skeleton.boneInverses[i]) sm.skeleton.boneInverses[i].copy(m);
+      });
+    }
+    bones.forEach(b => {
+      const p = originalBonePositions.get(b.uuid);
+      if (p) b.position.copy(p);
+    });
+    updateInfo('Tous les joints ont été remis à leur position d\'origine.');
+  }
+
   // Update rotation UI from bone
   function updateRotationUI() {
     if (!selectedBone) return;
@@ -2430,13 +2811,20 @@
 
   renderer.domElement.addEventListener('click', onCanvasClick);
 
-  // ----- Weight paint listeners -----
+  // ----- Mode listeners -----
   document.getElementById('mode-pose-btn').addEventListener('click', () => {
     if (weightPaintMode) exitWeightPaintMode();
+    if (jointEditMode) exitJointEditMode();
   });
   document.getElementById('mode-paint-btn').addEventListener('click', () => {
+    if (jointEditMode) exitJointEditMode();
     if (!weightPaintMode) enterWeightPaintMode();
   });
+  document.getElementById('mode-joints-btn').addEventListener('click', () => {
+    if (weightPaintMode) exitWeightPaintMode();
+    if (!jointEditMode) enterJointEditMode();
+  });
+  document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
 
   function bindBrushSlider(rangeId, numId, setter) {
     const range = document.getElementById(rangeId);
@@ -2517,11 +2905,102 @@
   }, true);
   renderer.domElement.addEventListener('pointercancel', endPaint, true);
 
+  // ----- Joint edit : drag direct sur le marker -----
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (!jointEditMode || e.button !== 0) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    // En mode joints : TOUS les bones (y compris twist) sont draggables
+    const hits = raycaster.intersectObjects(boneMarkers, false);
+    if (hits.length === 0) return;
+    const marker = hits[0].object;
+    if (!marker.userData.isBoneMarker) return;
+
+    selectBone(marker.userData.boneIndex);
+    if (!selectedBone) return;
+
+    // Snapshot pour la compensation (vertex figés + enfants pinés + bones liés)
+    snapshotJointDrag(selectedBone);
+
+    // Plan de drag : parallèle à la caméra, passant par le bone
+    selectedBone.getWorldPosition(_jdTmpVec);
+    camera.getWorldDirection(_jdCamDir);
+    _jdPlane.setFromNormalAndCoplanarPoint(_jdCamDir, _jdTmpVec);
+
+    // Hit initial sur le plan → offset entre le bone et le pointer (pour éviter un saut)
+    const hitOnPlane = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(_jdPlane, hitOnPlane)) {
+      clearJointDragSnapshot();
+      return;
+    }
+    selectedBone.getWorldPosition(_jdTmpVec);
+    _jdGrabOffset.copy(_jdTmpVec).sub(hitOnPlane);
+
+    isDraggingJoint = true;
+    controls.enabled = false;
+    e.stopPropagation();
+    e.preventDefault();
+    try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+  }, true);
+
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!jointEditMode || !isDraggingJoint || !selectedBone) return;
+    e.stopPropagation();
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const hitOnPlane = _jdTmpVec;
+    if (!raycaster.ray.intersectPlane(_jdPlane, hitOnPlane)) return;
+
+    // Cible monde du bone = hit + offset initial (pour conserver l'accroche)
+    hitOnPlane.add(_jdGrabOffset);
+
+    // Conversion en local par rapport au parent
+    const parent = selectedBone.parent;
+    if (!parent) return;
+    parent.updateMatrixWorld(true);
+    _jdParentInv.copy(parent.matrixWorld).invert();
+    hitOnPlane.applyMatrix4(_jdParentInv);
+    selectedBone.position.copy(hitOnPlane);
+    selectedBone.updateMatrixWorld(true);
+
+    applyJointDragCompensation();
+  }, true);
+
+  function endJointDrag(e) {
+    if (!isDraggingJoint) return;
+    isDraggingJoint = false;
+    controls.enabled = true;
+    clearJointDragSnapshot();
+    if (e && e.pointerId !== undefined) {
+      try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  }
+  function clearJointDragSnapshot() {
+    jointDragSnapshot.bone = null;
+    jointDragSnapshot.followSet.clear();
+    jointDragSnapshot.worldStart.clear();
+    jointDragSnapshot.skinningPerMesh.clear();
+    jointDragSnapshot.childWorldPositions.clear();
+  }
+  renderer.domElement.addEventListener('pointerup', endJointDrag, true);
+  renderer.domElement.addEventListener('pointercancel', endJointDrag, true);
+  renderer.domElement.addEventListener('pointerleave', endJointDrag, true);
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Shift') brushSubtract = true;
     if (e.key === 'Escape') {
       if (weightPaintMode) {
         exitWeightPaintMode();
+      } else if (jointEditMode) {
+        exitJointEditMode();
       } else {
         deselectBone();
       }
