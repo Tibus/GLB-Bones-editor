@@ -102,6 +102,18 @@
           background: #4a4a5a;
       }
 
+      #toggle-rest-pose-btn {
+          background: #4a8a6a;
+      }
+
+      #toggle-rest-pose-btn:hover {
+          background: #5a9a7a;
+      }
+
+      #toggle-rest-pose-btn.active {
+          background: #aa6aff;
+      }
+
       #info {
           position: fixed;
           bottom: 20px;
@@ -465,6 +477,128 @@
           margin-bottom: 5px;
           text-transform: uppercase;
       }
+
+      /* Mode toggle (Pose / Weight Paint) */
+      #mode-toggle {
+          display: flex;
+          gap: 6px;
+          margin-bottom: 12px;
+      }
+
+      .mode-btn {
+          flex: 1;
+          background: #2a2a4a;
+          border: 1px solid #444;
+          color: #aaa;
+          padding: 8px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 500;
+          transition: all 0.15s;
+      }
+
+      .mode-btn:hover {
+          background: #3a3a5a;
+          color: white;
+      }
+
+      .mode-btn.active {
+          background: #6a4a8a;
+          color: white;
+          border-color: #8a6aaa;
+      }
+
+      .mode-btn.disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+      }
+
+      /* Weight Paint controls */
+      #weight-paint-controls {
+          display: none;
+          flex-direction: column;
+          gap: 12px;
+      }
+
+      #weight-paint-controls.visible {
+          display: flex;
+      }
+
+      #weight-paint-controls h4 {
+          color: #ff8aff;
+          margin-bottom: 5px;
+      }
+
+      .brush-control {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+      }
+
+      .brush-control label {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 13px;
+      }
+
+      .brush-control label .brush-label {
+          font-weight: bold;
+          width: 60px;
+          color: #ff8aff;
+      }
+
+      .brush-control input[type="range"] {
+          flex: 1;
+          margin: 0 10px;
+          accent-color: #aa6acc;
+      }
+
+      .brush-control input[type="number"] {
+          width: 70px;
+          background: #2a2a4a;
+          border: 1px solid #444;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+      }
+
+      #paint-hint {
+          margin-top: 5px;
+          padding: 10px;
+          background: #3a2a4a;
+          border-radius: 6px;
+          font-size: 11px;
+          color: #ccc;
+          line-height: 1.4;
+      }
+
+      #paint-hint strong {
+          color: #ff8aff;
+      }
+
+      #weight-legend {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 5px;
+          font-size: 11px;
+          color: #aaa;
+      }
+
+      #weight-legend .gradient {
+          flex: 1;
+          height: 12px;
+          border-radius: 3px;
+          background: linear-gradient(to right,
+            rgb(0,0,255) 0%,
+            rgb(0,255,255) 25%,
+            rgb(0,255,0) 50%,
+            rgb(255,255,0) 75%,
+            rgb(255,0,0) 100%);
+      }
   </style>
 </head>
 <body>
@@ -481,6 +615,7 @@
   </label>
   <button id="play-pause-btn" class="control-btn">⏸️ Pause Animation</button>
   <button id="toggle-skeleton-btn" class="control-btn">🦴 Masquer Squelette</button>
+  <button id="toggle-rest-pose-btn" class="control-btn">🧍 Pose au repos</button>
 </div>
 
 <div id="info">
@@ -494,10 +629,16 @@
 
 <div id="bone-panel">
   <h3>🦴 Bones du Skeleton</h3>
+
+  <div id="mode-toggle">
+    <button id="mode-pose-btn" class="mode-btn active">✋ Pose</button>
+    <button id="mode-paint-btn" class="mode-btn">🎨 Weight Paint</button>
+  </div>
+
   <div id="bone-list">
     <div id="no-bones-msg">Aucun modèle chargé</div>
   </div>
-  
+
   <div id="rotation-controls">
     <div id="selected-bone-name">Aucun bone sélectionné</div>
     <h4>Rotation (degrés)</h4>
@@ -527,13 +668,45 @@
     </div>
     
     <button id="reset-bone-btn">🔄 Reset Rotation</button>
-    
+
     <div id="gizmo-hint">
       <strong>Astuce Gizmo:</strong> Utilisez les cercles colorés pour tourner le bone.
       Rouge = X, Vert = Y, Bleu = Z
     </div>
   </div>
-  
+
+  <div id="weight-paint-controls">
+    <div id="paint-bone-name">Aucun bone sélectionné</div>
+    <h4>🎨 Brush</h4>
+
+    <div class="brush-control">
+      <label>
+        <span class="brush-label">Rayon</span>
+        <input type="range" id="brush-radius" min="0.01" max="0.5" value="0.08" step="0.01">
+        <input type="number" id="brush-radius-num" min="0.01" max="0.5" value="0.08" step="0.01">
+      </label>
+    </div>
+
+    <div class="brush-control">
+      <label>
+        <span class="brush-label">Force</span>
+        <input type="range" id="brush-strength" min="0" max="1" value="0.5" step="0.05">
+        <input type="number" id="brush-strength-num" min="0" max="1" value="0.5" step="0.05">
+      </label>
+    </div>
+
+    <div id="weight-legend">
+      <span>0.0</span>
+      <div class="gradient"></div>
+      <span>1.0</span>
+    </div>
+
+    <div id="paint-hint">
+      <strong>Clic gauche</strong> = ajout de poids — <strong>Shift+clic</strong> = retrait<br>
+      Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
+    </div>
+  </div>
+
   <div id="skeleton-legend">
     <h5>Légende</h5>
     <div class="legend-item">
@@ -711,6 +884,40 @@
   const originalBoneRotations = new Map();
   window.originalBoneRotations = originalBoneRotations;
 
+  // Rest pose toggle : sauve la pose courante avant de la remplacer par la pose d'origine
+  let atRestPose = false;
+  const posedBoneRotations = new Map(); // uuid -> Euler clone
+
+  // Weight paint state
+  let weightPaintMode = false;
+  let skinnedMeshes = [];
+  const originalMaterials = new Map();    // mesh.uuid -> material | material[]
+  const paintMaterials = new Map();       // mesh.uuid -> MeshBasicMaterial (vertexColors)
+  const originalBoundingSpheres = new Map(); // mesh.uuid -> {center: Vector3, radius: number}
+  const originalBoundingBoxes = new Map();   // mesh.uuid -> {min: Vector3, max: Vector3}
+  let brushRadius = 0.08;
+  let brushStrength = 0.5;
+  let brushSubtract = false;
+  let isPainting = false;
+  const _vTmp = new THREE.Vector3();
+  const _vWorld = new THREE.Vector3();
+  window.skinnedMeshes = skinnedMeshes;
+
+  // Brush helper (anneau qui suit la souris en paint mode)
+  const brushHelper = new THREE.Mesh(
+    new THREE.RingGeometry(0.94, 1.0, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0xff5aff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+    })
+  );
+  brushHelper.renderOrder = 1001;
+  brushHelper.visible = false;
+  scene.add(brushHelper);
+
   // Loaders
   const gltfLoader = new GLTFLoader();
   const fbxLoader = new FBXLoader();
@@ -817,6 +1024,11 @@
     const loading = document.getElementById('loading');
     loading.style.display = 'block';
 
+    // Quitter le weight paint mode si actif (pour rétablir les materials originaux avant dispose)
+    if (weightPaintMode) {
+      exitWeightPaintMode();
+    }
+
     // Remove previous model
     if (currentModel) {
       scene.remove(currentModel);
@@ -831,6 +1043,26 @@
         }
       });
     }
+
+    // Reset weight paint state
+    skinnedMeshes.length = 0;
+    paintMaterials.forEach((mat) => {
+      if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+      else mat.dispose();
+    });
+    paintMaterials.clear();
+    originalMaterials.clear();
+
+    // Reset rest pose toggle
+    if (atRestPose) {
+      atRestPose = false;
+      const restBtn = document.getElementById('toggle-rest-pose-btn');
+      if (restBtn) {
+        restBtn.textContent = '🧍 Pose au repos';
+        restBtn.classList.remove('active');
+      }
+    }
+    posedBoneRotations.clear();
 
     // Clear skeleton helper
     if (skeletonHelper) {
@@ -909,7 +1141,7 @@
   }
   
   function manageCurrentModelAfterLoad() {
-    let skinnedMesh = null;
+    skinnedMeshes.length = 0;
 
     // Enable shadows and collect bones
     currentModel.traverse((child) => {
@@ -917,8 +1149,8 @@
         child.castShadow = true;
         child.receiveShadow = true;
       }
-      if (child.isSkinnedMesh && !skinnedMesh) {
-        skinnedMesh = child;
+      if (child.isSkinnedMesh) {
+        skinnedMeshes.push(child);
       }
       if (child.isBone) {
         bones.push(child);
@@ -926,6 +1158,7 @@
         originalBoneRotations.set(child.uuid, child.rotation.clone());
       }
     });
+    const skinnedMesh = skinnedMeshes[0] || null;
     
     // Center and scale model
     const box = new THREE.Box3().setFromObject(currentModel);
@@ -1336,6 +1569,41 @@
     }
   }
 
+  // Toggle rest pose : applique aux bones leur rotation d'origine (bind),
+  // ou restaure la pose courante.
+  function toggleRestPose() {
+    const btn = document.getElementById('toggle-rest-pose-btn');
+    if (!atRestPose) {
+      // Sauve la pose courante puis applique la pose d'origine
+      posedBoneRotations.clear();
+      bones.forEach((bone) => {
+        posedBoneRotations.set(bone.uuid, bone.rotation.clone());
+        const orig = originalBoneRotations.get(bone.uuid);
+        if (orig) bone.rotation.copy(orig);
+      });
+      atRestPose = true;
+      btn.textContent = '🧍 Pose actuelle';
+      btn.classList.add('active');
+    } else {
+      // Restaure la pose courante
+      bones.forEach((bone) => {
+        const posed = posedBoneRotations.get(bone.uuid);
+        if (posed) bone.rotation.copy(posed);
+      });
+      posedBoneRotations.clear();
+      atRestPose = false;
+      btn.textContent = '🧍 Pose au repos';
+      btn.classList.remove('active');
+    }
+    // Si on est en paint mode, recompute le cache des positions skinnées
+    if (weightPaintMode) {
+      currentModel.updateMatrixWorld(true);
+      skinnedMeshes.forEach((mesh) => rebuildWorldPositionCache(mesh));
+      refreshWeightColors();
+    }
+    if (selectedBone) updateRotationUI();
+  }
+
   // Toggle skeleton visibility
   function toggleSkeleton() {
     skeletonVisible = !skeletonVisible;
@@ -1514,12 +1782,21 @@
       selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    document.getElementById('rotation-controls').classList.add('visible');
     document.getElementById('selected-bone-name').textContent = selectedBone.name || `Bone ${index + 1}`;
 
     updateRotationUI();
     updateSelectedBoneMarker();
-    transformControls.attach(selectedBone);
+
+    if (weightPaintMode) {
+      // En mode paint : pas de gizmo, on rafraîchit la heatmap
+      transformControls.detach();
+      document.getElementById('rotation-controls').classList.remove('visible');
+      updatePaintBoneName();
+      refreshWeightColors();
+    } else {
+      document.getElementById('rotation-controls').classList.add('visible');
+      transformControls.attach(selectedBone);
+    }
   }
 
   // Deselect bone
@@ -1535,6 +1812,535 @@
 
     transformControls.detach();
     updateSelectedBoneMarker();
+
+    if (weightPaintMode) {
+      document.getElementById('paint-bone-name').textContent = 'Aucun bone sélectionné';
+      refreshWeightColors();
+    }
+  }
+
+  // ============================================================
+  // WEIGHT PAINT
+  // ============================================================
+
+  function ensureColorAttribute(geometry) {
+    const posCount = geometry.attributes.position.count;
+    let color = geometry.attributes.color;
+    if (!color || color.count !== posCount) {
+      const arr = new Float32Array(posCount * 3);
+      // initial : bleu (0,0,1)
+      for (let i = 0; i < posCount; i++) {
+        arr[i * 3 + 0] = 0;
+        arr[i * 3 + 1] = 0;
+        arr[i * 3 + 2] = 1;
+      }
+      color = new THREE.BufferAttribute(arr, 3);
+      geometry.setAttribute('color', color);
+    }
+    return color;
+  }
+
+  function swapToPaintMaterials() {
+    skinnedMeshes.forEach((mesh) => {
+      if (!originalMaterials.has(mesh.uuid)) {
+        originalMaterials.set(mesh.uuid, mesh.material);
+      }
+      let pm = paintMaterials.get(mesh.uuid);
+      if (!pm) {
+        pm = new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          side: THREE.DoubleSide,
+        });
+        paintMaterials.set(mesh.uuid, pm);
+      }
+      ensureColorAttribute(mesh.geometry);
+      mesh.material = pm;
+    });
+  }
+
+  function restoreOriginalMaterials() {
+    skinnedMeshes.forEach((mesh) => {
+      const orig = originalMaterials.get(mesh.uuid);
+      if (orig) mesh.material = orig;
+    });
+  }
+
+  // Bleu (0) → cyan (0.25) → vert (0.5) → jaune (0.75) → rouge (1)
+  function weightToHeatmap(w, outRGB) {
+    w = Math.max(0, Math.min(1, w));
+    let r, g, b;
+    if (w < 0.25) {
+      const t = w / 0.25;
+      r = 0; g = t; b = 1;
+    } else if (w < 0.5) {
+      const t = (w - 0.25) / 0.25;
+      r = 0; g = 1; b = 1 - t;
+    } else if (w < 0.75) {
+      const t = (w - 0.5) / 0.25;
+      r = t; g = 1; b = 0;
+    } else {
+      const t = (w - 0.75) / 0.25;
+      r = 1; g = 1 - t; b = 0;
+    }
+    outRGB[0] = r; outRGB[1] = g; outRGB[2] = b;
+  }
+
+  function refreshWeightColorsForMesh(mesh) {
+    const geom = mesh.geometry;
+    const color = ensureColorAttribute(geom);
+    const skinIndex = geom.attributes.skinIndex;
+    const skinWeight = geom.attributes.skinWeight;
+    if (!skinIndex || !skinWeight) return;
+
+    const vertexCount = geom.attributes.position.count;
+    const rgb = [0, 0, 0];
+
+    let boneIdx = -1;
+    if (selectedBone && weightPaintMode) {
+      boneIdx = mesh.skeleton.bones.indexOf(selectedBone);
+    }
+
+    for (let i = 0; i < vertexCount; i++) {
+      let w = 0;
+      if (boneIdx >= 0) {
+        for (let k = 0; k < 4; k++) {
+          if (skinIndex.getComponent(i, k) === boneIdx) {
+            w += skinWeight.getComponent(i, k);
+          }
+        }
+      }
+      weightToHeatmap(w, rgb);
+      color.setXYZ(i, rgb[0], rgb[1], rgb[2]);
+    }
+    color.needsUpdate = true;
+  }
+
+  function refreshWeightColors() {
+    skinnedMeshes.forEach(refreshWeightColorsForMesh);
+  }
+
+  // Hack 1 : étendre le bounding sphere/box pour bypasser le test rapide.
+  function inflateBoundingForRaycast(mesh) {
+    const geom = mesh.geometry;
+    if (!geom.boundingSphere) geom.computeBoundingSphere();
+    if (geom.boundingSphere) geom.boundingSphere.radius = 1e6;
+    if (geom.boundingBox) {
+      geom.boundingBox.min.set(-1e6, -1e6, -1e6);
+      geom.boundingBox.max.set(1e6, 1e6, 1e6);
+    }
+  }
+
+  // Hack 2 : on calcule nous-même la position skinnée d'un vertex avec
+  // des safety guards. SkinnedMesh.applyBoneTransform peut planter
+  // silencieusement (vraisemblablement à cause de bone indices invalides
+  // ou de bindMatrix non-trivial) sur certains modèles.
+  const _sIdx4 = new THREE.Vector4();
+  const _sW4 = new THREE.Vector4();
+  const _basePos = new THREE.Vector3();
+  const _boneMatT = new THREE.Matrix4();
+  const _tempV = new THREE.Vector3();
+
+  // Retourne la position skinnée en mesh local space
+  // (équivalent fonctionnel de applyBoneTransform mais robuste).
+  function customGetVertexPosition(mesh, idx, target) {
+    const skel = mesh.skeleton;
+    const geom = mesh.geometry;
+    const skinIdxAttr = geom.attributes.skinIndex;
+    const skinWAttr = geom.attributes.skinWeight;
+    const posAttr = geom.attributes.position;
+
+    if (!skel || !skinIdxAttr || !skinWAttr) {
+      target.fromBufferAttribute(posAttr, idx);
+      return target;
+    }
+
+    _sIdx4.fromBufferAttribute(skinIdxAttr, idx);
+    _sW4.fromBufferAttribute(skinWAttr, idx);
+    _basePos.fromBufferAttribute(posAttr, idx);
+    if (mesh.bindMatrix) _basePos.applyMatrix4(mesh.bindMatrix);
+
+    target.set(0, 0, 0);
+    let totalW = 0;
+    const bonesLen = skel.bones.length;
+
+    for (let k = 0; k < 4; k++) {
+      const w = _sW4.getComponent(k);
+      if (!w || !isFinite(w)) continue;
+      const bi = _sIdx4.getComponent(k);
+      if (bi < 0 || bi >= bonesLen) continue;
+      const bone = skel.bones[bi];
+      const inv = skel.boneInverses[bi];
+      if (!bone || !inv) continue;
+
+      _boneMatT.multiplyMatrices(bone.matrixWorld, inv);
+      target.addScaledVector(_tempV.copy(_basePos).applyMatrix4(_boneMatT), w);
+      totalW += w;
+    }
+
+    if (totalW < 0.001) {
+      // fallback : bind pose si aucune contribution valide
+      target.copy(_basePos);
+    }
+
+    if (mesh.bindMatrixInverse) target.applyMatrix4(mesh.bindMatrixInverse);
+    return target;
+  }
+
+  // Cache des positions skinnées en world space (mesh.uuid → Float32Array vertexCount*3)
+  // Calculé une fois à l'entrée du paint mode.
+  const cachedWorldPositions = new Map();
+
+  function rebuildWorldPositionCache(mesh) {
+    const posAttr = mesh.geometry.attributes.position;
+    if (!posAttr) return;
+    const vc = posAttr.count;
+    let arr = cachedWorldPositions.get(mesh.uuid);
+    if (!arr || arr.length !== vc * 3) {
+      arr = new Float32Array(vc * 3);
+      cachedWorldPositions.set(mesh.uuid, arr);
+    }
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < vc; i++) {
+      customGetVertexPosition(mesh, i, tmp);
+      tmp.applyMatrix4(mesh.matrixWorld);
+      if (!isFinite(tmp.x) || !isFinite(tmp.y) || !isFinite(tmp.z)) {
+        arr[i * 3] = 0; arr[i * 3 + 1] = 0; arr[i * 3 + 2] = 0;
+      } else {
+        arr[i * 3] = tmp.x;
+        arr[i * 3 + 1] = tmp.y;
+        arr[i * 3 + 2] = tmp.z;
+      }
+    }
+  }
+
+  // Custom raycast contre les SkinnedMesh, basé sur les positions cachées.
+  const _vRayA = new THREE.Vector3();
+  const _vRayB = new THREE.Vector3();
+  const _vRayC = new THREE.Vector3();
+  const _vRayHit = new THREE.Vector3();
+  function customRaycastSkinnedMeshes(raycaster) {
+    const intersects = [];
+    const ray = raycaster.ray;
+    for (const mesh of skinnedMeshes) {
+      const geom = mesh.geometry;
+      const indexAttr = geom.index;
+      if (!indexAttr) continue;
+      const arr = cachedWorldPositions.get(mesh.uuid);
+      if (!arr) continue;
+      const triCount = (indexAttr.count / 3) | 0;
+      for (let i = 0; i < triCount; i++) {
+        const j = i * 3;
+        const a = indexAttr.getX(j), b = indexAttr.getX(j + 1), c = indexAttr.getX(j + 2);
+        const a3 = a * 3, b3 = b * 3, c3 = c * 3;
+        _vRayA.set(arr[a3], arr[a3 + 1], arr[a3 + 2]);
+        _vRayB.set(arr[b3], arr[b3 + 1], arr[b3 + 2]);
+        _vRayC.set(arr[c3], arr[c3 + 1], arr[c3 + 2]);
+        const result = ray.intersectTriangle(_vRayA, _vRayB, _vRayC, false, _vRayHit);
+        if (result) {
+          intersects.push({
+            distance: ray.origin.distanceTo(_vRayHit),
+            point: _vRayHit.clone(),
+            object: mesh,
+            faceIndex: i,
+          });
+        }
+      }
+    }
+    intersects.sort((a, b) => a.distance - b.distance);
+    return intersects;
+  }
+
+
+  function enterWeightPaintMode() {
+    if (!skinnedMeshes.length) {
+      updateInfo('Aucun mesh skinné — impossible de passer en weight paint.');
+      return;
+    }
+    weightPaintMode = true;
+    transformControls.detach();
+    document.getElementById('rotation-controls').classList.remove('visible');
+    document.getElementById('weight-paint-controls').classList.add('visible');
+    document.getElementById('mode-pose-btn').classList.remove('active');
+    document.getElementById('mode-paint-btn').classList.add('active');
+
+    // Figer l'animation pendant l'édition pour ne pas bouger sous le brush
+    if (mixer) mixer.timeScale = 0;
+    if (mixerFbx) mixerFbx.timeScale = 0;
+
+    // Sauver puis gonfler les bounding sphere/box pour fiabiliser le raycast
+    skinnedMeshes.forEach((mesh) => {
+      const geom = mesh.geometry;
+      if (geom.boundingSphere) {
+        originalBoundingSpheres.set(mesh.uuid, {
+          center: geom.boundingSphere.center.clone(),
+          radius: geom.boundingSphere.radius,
+        });
+      }
+      if (geom.boundingBox) {
+        originalBoundingBoxes.set(mesh.uuid, {
+          min: geom.boundingBox.min.clone(),
+          max: geom.boundingBox.max.clone(),
+        });
+      }
+      inflateBoundingForRaycast(mesh);
+      rebuildWorldPositionCache(mesh);
+    });
+
+    swapToPaintMaterials();
+    refreshWeightColors();
+    updatePaintBoneName();
+  }
+
+  function exitWeightPaintMode() {
+    weightPaintMode = false;
+    isPainting = false;
+    controls.enabled = true;
+    brushHelper.visible = false;
+    document.getElementById('weight-paint-controls').classList.remove('visible');
+    document.getElementById('mode-paint-btn').classList.remove('active');
+    document.getElementById('mode-pose-btn').classList.add('active');
+    restoreOriginalMaterials();
+
+    // Vider le cache des positions skinnées
+    cachedWorldPositions.clear();
+
+    // Restaurer les bounding sphere/box originales
+    skinnedMeshes.forEach((mesh) => {
+      const geom = mesh.geometry;
+      const sph = originalBoundingSpheres.get(mesh.uuid);
+      if (sph && geom.boundingSphere) {
+        geom.boundingSphere.center.copy(sph.center);
+        geom.boundingSphere.radius = sph.radius;
+      }
+      const box = originalBoundingBoxes.get(mesh.uuid);
+      if (box && geom.boundingBox) {
+        geom.boundingBox.min.copy(box.min);
+        geom.boundingBox.max.copy(box.max);
+      }
+    });
+    originalBoundingSpheres.clear();
+    originalBoundingBoxes.clear();
+
+    if (mixer) mixer.timeScale = 1;
+    if (mixerFbx) mixerFbx.timeScale = 1;
+
+    if (selectedBone) {
+      document.getElementById('rotation-controls').classList.add('visible');
+      transformControls.attach(selectedBone);
+    }
+  }
+
+  // Met à jour le brush helper (anneau) en fonction de la position de la souris
+  function updateBrushHelper(event) {
+    if (!weightPaintMode) {
+      brushHelper.visible = false;
+      return null;
+    }
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    // Markers : pas de brush dessus
+    const markerHits = raycaster.intersectObjects(selectableBoneMarkers, false);
+    if (markerHits.length > 0) {
+      brushHelper.visible = false;
+      return null;
+    }
+
+    // Custom raycast contre les positions skinnées cachées
+    const hits = customRaycastSkinnedMeshes(raycaster);
+    if (hits.length === 0) {
+      brushHelper.visible = false;
+      return null;
+    }
+    const hit = hits[0];
+    brushHelper.position.copy(hit.point);
+    brushHelper.lookAt(camera.position);
+    brushHelper.scale.setScalar(brushRadius);
+    brushHelper.visible = true;
+    return hit;
+  }
+
+  function updatePaintBoneName() {
+    const el = document.getElementById('paint-bone-name');
+    if (!el) return;
+    el.textContent = selectedBone
+      ? (selectedBone.name || `Bone ${selectedBoneIndex + 1}`)
+      : 'Aucun bone sélectionné';
+  }
+
+  // Re-normalisation à 1.0 pour un vertex
+  function applyWeightDelta(mesh, vertexIdx, boneIdx, delta) {
+    const W = mesh.geometry.attributes.skinWeight;
+    const I = mesh.geometry.attributes.skinIndex;
+    const wArr = W.array;
+    const iArr = I.array;
+    const itemSize = W.itemSize; // 4
+
+    const base = vertexIdx * itemSize;
+
+    // 1. Trouver le slot pour boneIdx
+    let slot = -1;
+    for (let k = 0; k < 4; k++) {
+      if (iArr[base + k] === boneIdx && wArr[base + k] > 0) {
+        slot = k;
+        break;
+      }
+    }
+
+    if (slot === -1) {
+      if (delta <= 0) return; // retrait sur un bone non présent → no-op
+      // Insertion : remplacer le slot avec le plus petit poids
+      let minK = 0;
+      let minW = wArr[base];
+      for (let k = 1; k < 4; k++) {
+        if (wArr[base + k] < minW) {
+          minW = wArr[base + k];
+          minK = k;
+        }
+      }
+      slot = minK;
+      iArr[base + slot] = boneIdx;
+      wArr[base + slot] = 0;
+    }
+
+    // 2. Appliquer delta + clamp
+    let newW = wArr[base + slot] + delta;
+    if (newW < 0) newW = 0;
+    if (newW > 1) newW = 1;
+    wArr[base + slot] = newW;
+
+    // 3. Re-normaliser : on veut que sum(weights) reste = 1
+    const remaining = 1 - newW;
+    let otherSum = 0;
+    for (let k = 0; k < 4; k++) {
+      if (k !== slot) otherSum += wArr[base + k];
+    }
+
+    if (otherSum > 1e-6) {
+      const scale = remaining / otherSum;
+      for (let k = 0; k < 4; k++) {
+        if (k !== slot) wArr[base + k] *= scale;
+      }
+    } else {
+      // Pas d'autre bone à qui redistribuer → on annule l'effet du delta
+      // sur la somme totale en remettant le slot courant à 1.
+      // (Sinon le vertex aurait sum < 1 et collapse vers l'origine.)
+      wArr[base + slot] = 1;
+    }
+  }
+
+  // Trouve le mesh dont la skeleton contient selectedBone — utile car certains
+  // bones (root, Armature) ne sont pas dans skeleton.bones et donneraient -1.
+  function findBoneIndexAcrossMeshes(bone) {
+    for (const m of skinnedMeshes) {
+      const idx = m.skeleton.bones.indexOf(bone);
+      if (idx >= 0) return { mesh: m, boneIdx: idx };
+    }
+    return null;
+  }
+
+  // Brush — applique sur tous les vertex dans le rayon
+  function paintAtPointer(event) {
+    if (!weightPaintMode) return;
+    if (!selectedBone) {
+      updateInfo('⚠️ Sélectionne d\'abord un bone (clic sur un marker).');
+      return;
+    }
+
+    // Vérifie que selectedBone est utilisé par au moins un mesh
+    const found = findBoneIndexAcrossMeshes(selectedBone);
+    if (!found) {
+      updateInfo(`⚠️ Le bone "${selectedBone.name}" n'est dans aucune skeleton (non-deformer). Choisis un bone qui déforme la peau.`);
+      return;
+    }
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // Priorité : si un marker est cliqué, ne pas peindre
+    const markerHits = raycaster.intersectObjects(selectableBoneMarkers, false);
+    if (markerHits.length > 0) return;
+
+    const hits = customRaycastSkinnedMeshes(raycaster);
+    if (hits.length === 0) {
+      updateInfo('⚠️ Pas de hit sur le mesh.');
+      return;
+    }
+
+    // Cherche le premier hit dont la skeleton contient selectedBone
+    let hit = null;
+    let mesh = null;
+    let boneIdx = -1;
+    for (const h of hits) {
+      if (!h.object.isSkinnedMesh) continue;
+      const idx = h.object.skeleton.bones.indexOf(selectedBone);
+      if (idx >= 0) {
+        hit = h; mesh = h.object; boneIdx = idx;
+        break;
+      }
+    }
+    if (!hit) {
+      updateInfo(`⚠️ Le mesh touché n'utilise pas le bone "${selectedBone.name}".`);
+      return;
+    }
+
+    const hitPoint = hit.point; // world space
+    const r2 = brushRadius * brushRadius;
+    const sign = brushSubtract ? -1 : 1;
+    const stepStrength = brushStrength * 0.25;
+
+    const geom = mesh.geometry;
+    const posAttr = geom.attributes.position;
+    const vertexCount = posAttr.count;
+
+    // On utilise les positions cachées (calculées à l'entrée du paint mode).
+    const cache = cachedWorldPositions.get(mesh.uuid);
+    if (!cache) {
+      updateInfo('⚠️ Cache positions introuvable.');
+      return;
+    }
+    const minX = hitPoint.x - brushRadius, maxX = hitPoint.x + brushRadius;
+    const minY = hitPoint.y - brushRadius, maxY = hitPoint.y + brushRadius;
+    const minZ = hitPoint.z - brushRadius, maxZ = hitPoint.z + brushRadius;
+
+    let touched = 0;
+    for (let i = 0; i < vertexCount; i++) {
+      const i3 = i * 3;
+      const wx = cache[i3], wy = cache[i3 + 1], wz = cache[i3 + 2];
+
+      if (wx < minX || wx > maxX) continue;
+      if (wy < minY || wy > maxY) continue;
+      if (wz < minZ || wz > maxZ) continue;
+
+      const dx = wx - hitPoint.x;
+      const dy = wy - hitPoint.y;
+      const dz = wz - hitPoint.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > r2) continue;
+
+      const dist = Math.sqrt(d2);
+      const t = 1 - (dist / brushRadius);
+      const falloff = t * t;
+      const delta = sign * stepStrength * falloff;
+      if (delta === 0) continue;
+
+      applyWeightDelta(mesh, i, boneIdx, delta);
+      touched++;
+    }
+
+    if (touched > 0) {
+      geom.attributes.skinWeight.needsUpdate = true;
+      geom.attributes.skinIndex.needsUpdate = true;
+      refreshWeightColorsForMesh(mesh);
+      updateInfo(`🎨 ${selectedBone.name} : ${touched} vertices peints (${brushSubtract ? '−' : '+'}).`);
+    } else {
+      updateInfo(`⚠️ Aucun vertex dans le rayon (${brushRadius.toFixed(2)}). Augmente le rayon.`);
+    }
   }
 
   // Update rotation UI from bone
@@ -1620,13 +2426,109 @@
 
   document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
   document.getElementById('toggle-skeleton-btn').addEventListener('click', toggleSkeleton);
+  document.getElementById('toggle-rest-pose-btn').addEventListener('click', toggleRestPose);
 
   renderer.domElement.addEventListener('click', onCanvasClick);
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      deselectBone();
+  // ----- Weight paint listeners -----
+  document.getElementById('mode-pose-btn').addEventListener('click', () => {
+    if (weightPaintMode) exitWeightPaintMode();
+  });
+  document.getElementById('mode-paint-btn').addEventListener('click', () => {
+    if (!weightPaintMode) enterWeightPaintMode();
+  });
+
+  function bindBrushSlider(rangeId, numId, setter) {
+    const range = document.getElementById(rangeId);
+    const num = document.getElementById(numId);
+    range.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      num.value = v;
+      setter(v);
+    });
+    num.addEventListener('input', (e) => {
+      let v = parseFloat(e.target.value);
+      if (isNaN(v)) return;
+      v = Math.max(parseFloat(range.min), Math.min(parseFloat(range.max), v));
+      range.value = v;
+      setter(v);
+    });
+  }
+  bindBrushSlider('brush-radius', 'brush-radius-num', (v) => { brushRadius = v; });
+  bindBrushSlider('brush-strength', 'brush-strength-num', (v) => { brushStrength = v; });
+
+  // Pointer events for brush — attachés en phase CAPTURE pour passer devant OrbitControls
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (!weightPaintMode || e.button !== 0) return;
+
+    const hit = updateBrushHelper(e);
+    if (!hit) return; // pas sur le mesh → on laisse OrbitControls
+
+    if (!selectedBone) {
+      updateInfo('Sélectionne un bone d\'abord (clic sur un marker ou dans la liste).');
+      return;
     }
+
+    // On peint : on bloque OrbitControls pour cette interaction
+    e.stopPropagation();
+    e.preventDefault();
+    isPainting = true;
+    controls.enabled = false;
+    try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+    brushSubtract = e.shiftKey;
+    paintAtPointer(e);
+  }, true);
+
+  // Throttle du pointermove à 1 par frame d'animation
+  let _pendingPointerEvent = null;
+  let _rafScheduled = false;
+  function flushPointerMove() {
+    _rafScheduled = false;
+    const e = _pendingPointerEvent;
+    _pendingPointerEvent = null;
+    if (!e || !weightPaintMode) return;
+    updateBrushHelper(e);
+    if (!isPainting) return;
+    brushSubtract = e.shiftKey;
+    paintAtPointer(e);
+  }
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!weightPaintMode) return;
+    if (isPainting) e.stopPropagation();
+    _pendingPointerEvent = e;
+    if (!_rafScheduled) {
+      _rafScheduled = true;
+      requestAnimationFrame(flushPointerMove);
+    }
+  }, true);
+
+  function endPaint(e) {
+    if (!isPainting) return;
+    isPainting = false;
+    controls.enabled = true;
+    if (e && e.pointerId !== undefined) {
+      try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  }
+  renderer.domElement.addEventListener('pointerup', endPaint, true);
+  renderer.domElement.addEventListener('pointerleave', (e) => {
+    brushHelper.visible = false;
+    endPaint(e);
+  }, true);
+  renderer.domElement.addEventListener('pointercancel', endPaint, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Shift') brushSubtract = true;
+    if (e.key === 'Escape') {
+      if (weightPaintMode) {
+        exitWeightPaintMode();
+      } else {
+        deselectBone();
+      }
+    }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift') brushSubtract = false;
   });
 
   ['x', 'y', 'z'].forEach(axis => {
@@ -1681,18 +2583,21 @@
 
     const delta = clock.getDelta();
 
-    // Update secondary FBX animation
+    // Update secondary FBX animation (skip si rest pose pour préserver les rotations d'origine)
     if (mixerFbx) {
-      mixerFbx.update(delta);
-      if(isPlaying){
-        matchFbxAnimationToPrincipal();
+      if (!atRestPose) {
+        mixerFbx.update(delta);
+        if(isPlaying){
+          matchFbxAnimationToPrincipal();
+        }
       }
     }
     else if (mixer) {
-      mixer.update(delta);
-
-      if (isPlaying && selectedBone) {
-        updateRotationUI();
+      if (!atRestPose) {
+        mixer.update(delta);
+        if (isPlaying && selectedBone) {
+          updateRotationUI();
+        }
       }
     }
 
