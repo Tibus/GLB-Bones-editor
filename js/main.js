@@ -15,7 +15,7 @@ import {
 } from './weight-paint.js';
 import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
-  attachJointDragListeners,
+  attachJointDragListeners, attachJointRotationListeners,
 } from './joint-edit.js';
 import { enterIKMode, exitIKMode, attachIKDragListeners } from './ik.js';
 
@@ -148,8 +148,9 @@ dom.addEventListener('pointerleave', (e) => {
 }, true);
 dom.addEventListener('pointercancel', endPaint, true);
 
-// ---------- Drag direct des joints ----------
+// ---------- Drag direct des joints + gizmo rotation pour mains/pieds ----------
 attachJointDragListeners(selectBone);
+attachJointRotationListeners();
 
 // ---------- Drag des cibles IK ----------
 attachIKDragListeners();

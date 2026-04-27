@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { isTwistBone } from './utils.js';
 import { updatePaintBoneName, refreshWeightColors } from './weight-paint.js';
-import { updateJointBoneName } from './joint-edit.js';
+import { updateJointBoneName, isBoneRotatableInJointMode } from './joint-edit.js';
 
 // ---------- Markers ----------
 
@@ -130,6 +130,21 @@ export function updateBoneList() {
   rootBones.forEach(rootBone => addBoneToList(rootBone, 0));
 }
 
+// ---------- Gizmo helper ----------
+// Configure les axes visibles du gizmo en fonction du bone :
+// les twist bones ne montrent que l'axe Y (rotation autour de leur axe principal).
+export function attachGizmoTo(bone) {
+  if (!bone) {
+    state.transformControls.detach();
+    return;
+  }
+  const isTwist = isTwistBone(bone);
+  state.transformControls.showX = !isTwist;
+  state.transformControls.showY = true;
+  state.transformControls.showZ = !isTwist;
+  state.transformControls.attach(bone);
+}
+
 // ---------- Sélection ----------
 
 export function selectBone(index) {
@@ -155,12 +170,18 @@ export function selectBone(index) {
     updatePaintBoneName();
     refreshWeightColors();
   } else if (state.jointEditMode) {
-    state.transformControls.detach();
     document.getElementById('rotation-controls').classList.remove('visible');
+    if (isBoneRotatableInJointMode(state.selectedBone)) {
+      state.transformControls.setMode('rotate');
+      state.transformControls.setSpace('local');
+      attachGizmoTo(state.selectedBone);
+    } else {
+      state.transformControls.detach();
+    }
     updateJointBoneName();
   } else {
     document.getElementById('rotation-controls').classList.add('visible');
-    state.transformControls.attach(state.selectedBone);
+    attachGizmoTo(state.selectedBone);
   }
 }
 
@@ -215,6 +236,10 @@ export function resetBoneRotation() {
 }
 
 // ---------- Click sur le canvas (sélection en mode Pose et Paint) ----------
+//
+// Le clic sélectionne TOUS les bones (twists inclus). Si plusieurs markers
+// se chevauchent (twist sur leur "vrai" bone par exemple), un clic répété
+// au même endroit cycle entre les bones empilés.
 
 export function onCanvasClick(event) {
   if (event.target !== state.renderer.domElement) return;
@@ -224,11 +249,36 @@ export function onCanvasClick(event) {
   state.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   state.raycaster.setFromCamera(state.mouse, state.camera);
 
-  const intersects = state.raycaster.intersectObjects(state.selectableBoneMarkers, false);
-  if (intersects.length > 0) {
-    const clickedMarker = intersects[0].object;
-    if (clickedMarker.userData.isBoneMarker && clickedMarker.userData.isSelectable) {
-      selectBone(clickedMarker.userData.boneIndex);
-    }
+  // Raycast contre TOUS les bone markers (y compris twist)
+  const intersects = state.raycaster.intersectObjects(state.boneMarkers, false);
+  if (intersects.length === 0) return;
+
+  const candidates = pickStackedBones(intersects);
+  if (candidates.length === 0) return;
+
+  selectBone(pickNextInStack(candidates).userData.boneIndex);
+}
+
+// Filtre les markers proches dans le stack du clic (à <2x du rayon du marker le plus proche)
+// pour ne garder que les bones empilés au même endroit.
+export function pickStackedBones(intersects) {
+  if (intersects.length === 0) return [];
+  const firstDist = intersects[0].distance;
+  const tolerance = Math.max(0.05, firstDist * 0.15); // 15% ou 5cm minimum
+  const out = [];
+  for (const hit of intersects) {
+    if (!hit.object.userData.isBoneMarker) continue;
+    if (hit.distance > firstDist + tolerance) break;
+    out.push(hit.object);
   }
+  return out;
+}
+
+// Si le bone actuellement sélectionné est dans la pile, retourne le suivant ;
+// sinon retourne le premier (le plus proche de la caméra).
+export function pickNextInStack(stack) {
+  if (state.selectedBoneIndex < 0) return stack[0];
+  const currentIdx = stack.findIndex((m) => m.userData.boneIndex === state.selectedBoneIndex);
+  if (currentIdx === -1) return stack[0];
+  return stack[(currentIdx + 1) % stack.length];
 }

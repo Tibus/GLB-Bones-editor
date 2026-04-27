@@ -14,6 +14,26 @@ import { state } from './state.js';
 import { isDescendantOf, depthFromRoot } from './utils.js';
 import { updateInfo } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
+import { pickStackedBones, pickNextInStack, attachGizmoTo } from './bones.js';
+
+// ============================================================
+// BONES ROTATABLES EN MODE JOINTS — à remplir par toi
+// ============================================================
+// Ces bones reçoivent un gizmo de rotation en mode joints (en plus
+// du drag-translation classique). La rotation modifie la BIND POSE
+// du bone : un boneInverse mis à jour ⇒ vertex figés, et les enfants
+// directs gardent leur position+rotation monde inchangées.
+// Utile pour corriger l'orientation de référence (mains, pieds).
+export const rotatableInJointMode = new Set([
+  "L_Hand", "R_Hand",
+  "L_Foot", "R_Foot",
+]);
+window.rotatableInJointMode = rotatableInJointMode;
+
+export function isBoneRotatableInJointMode(bone) {
+  if (!bone) return false;
+  return rotatableInJointMode.has(bone.name);
+}
 
 // ============================================================
 // JOINT FOLLOW MAP — à remplir par toi
@@ -155,6 +175,105 @@ function clearJointDragSnapshot() {
   snap.childWorldPositions.clear();
 }
 
+// ---------- Rotation en mode joints (mains/pieds) ----------
+// Modifie la bind rotation d'un bone : matrixWorld change, on recalcule boneInverse
+// pour figer S, et on restaure la matrixWorld complète des enfants directs (ils ne
+// suivent pas la rotation, contrairement au comportement par défaut d'inheritance).
+
+function snapshotJointRotation(bone) {
+  const snap = state.jointRotateSnapshot;
+  snap.bone = bone;
+  snap.skinningPerMesh.clear();
+  snap.childMatrixWorld.clear();
+
+  bone.updateMatrixWorld(true);
+
+  // S = matrixWorld * boneInverse pour le bone, par mesh
+  for (const sm of state.skinnedMeshes) {
+    const idx = sm.skeleton.bones.indexOf(bone);
+    if (idx < 0) continue;
+    const S = new THREE.Matrix4().multiplyMatrices(bone.matrixWorld, sm.skeleton.boneInverses[idx]);
+    snap.skinningPerMesh.set(sm, S);
+  }
+
+  // matrixWorld complète des enfants directs (à figer)
+  for (const child of bone.children) {
+    if (!child.isBone) continue;
+    child.updateMatrixWorld(true);
+    snap.childMatrixWorld.set(child, child.matrixWorld.clone());
+  }
+}
+
+const _rotInv = new THREE.Matrix4();
+const _rotLocal = new THREE.Matrix4();
+
+function applyJointRotationCompensation() {
+  const snap = state.jointRotateSnapshot;
+  const B = snap.bone;
+  if (!B) return;
+
+  B.updateMatrixWorld(true);
+  _rotInv.copy(B.matrixWorld).invert();
+
+  // 1. Boneinverse de B : boneInverse_new = matrixWorld⁻¹ · S_snapshot ⇒ vertex figés
+  for (const [sm, S_snap] of snap.skinningPerMesh) {
+    const idx = sm.skeleton.bones.indexOf(B);
+    if (idx < 0) continue;
+    sm.skeleton.boneInverses[idx].multiplyMatrices(_rotInv, S_snap);
+  }
+
+  // 2. Restaurer la matrixWorld complète des enfants directs (rotation+position)
+  //    childLocal_new = parentWorld⁻¹ · childWorld_snapshot
+  for (const [child, childWorldSnap] of snap.childMatrixWorld) {
+    _rotLocal.multiplyMatrices(_rotInv, childWorldSnap);
+    _rotLocal.decompose(child.position, child.quaternion, child.scale);
+    child.updateMatrixWorld(true);
+  }
+}
+
+function clearJointRotationSnapshot() {
+  const snap = state.jointRotateSnapshot;
+  snap.bone = null;
+  snap.skinningPerMesh.clear();
+  snap.childMatrixWorld.clear();
+}
+
+// Branche les listeners du gizmo TransformControls pour la rotation en mode joints.
+// À appeler une fois au démarrage.
+export function attachJointRotationListeners() {
+  const tc = state.transformControls;
+
+  tc.addEventListener('mouseDown', () => {
+    if (!state.jointEditMode) return;
+    if (!isBoneRotatableInJointMode(state.selectedBone)) return;
+    snapshotJointRotation(state.selectedBone);
+  });
+
+  tc.addEventListener('change', () => {
+    if (!state.jointEditMode) return;
+    if (!state.jointRotateSnapshot.bone) return;
+    applyJointRotationCompensation();
+  });
+
+  tc.addEventListener('mouseUp', () => {
+    if (!state.jointEditMode) return;
+    const snap = state.jointRotateSnapshot;
+    if (snap.bone) {
+      // Persiste la nouvelle rotation comme nouvelle bind pose pour ce bone :
+      // - originalBoneRotations : utilisé à la prochaine entrée du mode joints
+      //   (rotation reset à la nouvelle bind ⇒ S = identité ⇒ vertex cohérents).
+      // - savedRotationsForJointEdit : utilisé à la sortie du mode courant
+      //   (la pose visible reste la nouvelle bind, l'animation reprend ensuite).
+      const newRot = snap.bone.rotation.clone();
+      state.originalBoneRotations.set(snap.bone.uuid, newRot);
+      if (state.savedRotationsForJointEdit) {
+        state.savedRotationsForJointEdit.set(snap.bone.uuid, newRot.clone());
+      }
+    }
+    clearJointRotationSnapshot();
+  });
+}
+
 // ---------- Enter / Exit ----------
 
 export function enterJointEditMode() {
@@ -177,8 +296,14 @@ export function enterJointEditMode() {
   if (state.mixer) state.mixer.timeScale = 0;
   if (state.mixerFbx) state.mixerFbx.timeScale = 0;
 
-  // Pas de gizmo en mode joints — drag direct sur le marker
-  state.transformControls.detach();
+  // En mode joints : pas de gizmo SAUF pour les bones rotatables (mains/pieds)
+  if (isBoneRotatableInJointMode(state.selectedBone)) {
+    state.transformControls.setMode('rotate');
+    state.transformControls.setSpace('local');
+    attachGizmoTo(state.selectedBone);
+  } else {
+    state.transformControls.detach();
+  }
 
   document.getElementById('rotation-controls').classList.remove('visible');
   document.getElementById('joint-edit-controls').classList.add('visible');
@@ -214,7 +339,7 @@ export function exitJointEditMode() {
 
   if (state.selectedBone) {
     document.getElementById('rotation-controls').classList.add('visible');
-    state.transformControls.attach(state.selectedBone);
+    attachGizmoTo(state.selectedBone);
   } else {
     state.transformControls.detach();
   }
@@ -264,11 +389,18 @@ export function attachJointDragListeners(selectBone) {
 
     const hits = state.raycaster.intersectObjects(state.boneMarkers, false);
     if (hits.length === 0) return;
-    const marker = hits[0].object;
-    if (!marker.userData.isBoneMarker) return;
+
+    // Cycle entre bones empilés (twist sur leur "vrai" bone) si re-clic au même endroit
+    const stack = pickStackedBones(hits);
+    if (stack.length === 0) return;
+    const marker = pickNextInStack(stack);
 
     selectBone(marker.userData.boneIndex);
     if (!state.selectedBone) return;
+
+    // Si le bone est rotatable (main/pied) : on ne démarre PAS de drag de translation,
+    // on laisse l'utilisateur interagir avec le gizmo de rotation à la place.
+    if (isBoneRotatableInJointMode(state.selectedBone)) return;
 
     snapshotJointDrag(state.selectedBone);
 

@@ -82,6 +82,12 @@ export const state = {
   originalBoneInverses: new Map(),
   originalBonePositions: new Map(),
   isDraggingJoint: false,
+  // Snapshot pour le drag de rotation (gizmo en mode joints, bones rotatables)
+  jointRotateSnapshot: {
+    bone: null,
+    skinningPerMesh: new Map(),  // skinnedMesh -> Matrix4 (S figé pour le bone draggé)
+    childMatrixWorld: new Map(), // child bone -> Matrix4 (matrixWorld complète figée)
+  },
 
   // IK
   ikMode: false,

@@ -14,6 +14,7 @@ import { state } from './state.js';
 import { updateInfo } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
+import { attachGizmoTo } from './bones.js';
 
 // ============================================================
 // IK CHAINS — à remplir par toi
@@ -220,6 +221,11 @@ export function enterIKMode() {
 
   state.transformControls.detach();
 
+  // Masque tous les bone markers et le skeleton helper pour ne laisser
+  // visibles que les markers IK (cibles + poles).
+  state.boneMarkersGroup.visible = false;
+  if (state.skeletonHelper) state.skeletonHelper.visible = false;
+
   // Nettoie les markers précédents
   state.ikTargetMarkers.forEach((m) => state.scene.remove(m));
   state.ikTargetMarkers.clear();
@@ -271,6 +277,10 @@ export function exitIKMode() {
   if (state.mixer) state.mixer.timeScale = 1;
   if (state.mixerFbx) state.mixerFbx.timeScale = 1;
 
+  // Restaure la visibilité des bone markers et du skeleton helper
+  state.boneMarkersGroup.visible = state.skeletonVisible;
+  if (state.skeletonHelper) state.skeletonHelper.visible = state.skeletonVisible;
+
   // Retire les markers
   const disposeMarker = (m) => {
     state.scene.remove(m);
@@ -293,7 +303,7 @@ export function exitIKMode() {
 
   if (state.selectedBone) {
     document.getElementById('rotation-controls').classList.add('visible');
-    state.transformControls.attach(state.selectedBone);
+    attachGizmoTo(state.selectedBone);
   }
 }
 

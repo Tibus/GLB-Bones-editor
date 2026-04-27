@@ -20,7 +20,6 @@
   </label>
   <button id="play-pause-btn" class="control-btn">⏸️ Pause Animation</button>
   <button id="toggle-skeleton-btn" class="control-btn">🦴 Masquer Squelette</button>
-  <button id="toggle-rest-pose-btn" class="control-btn">🧍 Pose au repos</button>
 </div>
 
 <div id="info">
@@ -37,9 +36,9 @@
 
   <div id="mode-toggle">
     <button id="mode-pose-btn" class="mode-btn active">✋ Pose</button>
+    <button id="mode-ik-btn" class="mode-btn">🎯 IK</button>
     <button id="mode-paint-btn" class="mode-btn">🎨 Paint</button>
     <button id="mode-joints-btn" class="mode-btn">🔧 Joints</button>
-    <button id="mode-ik-btn" class="mode-btn">🎯 IK</button>
   </div>
 
   <div id="bone-list">
@@ -112,6 +111,8 @@
       <strong>Clic gauche</strong> = ajout de poids — <strong>Shift+clic</strong> = retrait<br>
       Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
     </div>
+
+    <button id="toggle-rest-pose-btn" class="control-btn">🧍 Pose au repos</button>
   </div>
 
   <div id="joint-edit-controls">

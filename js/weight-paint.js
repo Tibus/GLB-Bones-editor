@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { weightToHeatmap } from './utils.js';
 import { updateInfo } from './ui.js';
+import { attachGizmoTo } from './bones.js';
+import { toggleRestPose } from './animation.js';
 
 // ---------- Vertex colors ----------
 
@@ -242,6 +244,10 @@ export function enterWeightPaintMode() {
 }
 
 export function exitWeightPaintMode() {
+  // Si la pose au repos est active, on la désactive avant de quitter le mode
+  // (le bouton vit dans le panneau de peinture, donc il doit être OFF en sortant).
+  if (state.atRestPose) toggleRestPose();
+
   state.weightPaintMode = false;
   state.isPainting = false;
   state.controls.enabled = true;
@@ -274,7 +280,7 @@ export function exitWeightPaintMode() {
 
   if (state.selectedBone) {
     document.getElementById('rotation-controls').classList.add('visible');
-    state.transformControls.attach(state.selectedBone);
+    attachGizmoTo(state.selectedBone);
   }
 }
 
