@@ -67,6 +67,11 @@ document.getElementById('mode-ik-btn').addEventListener('click', () => {
 });
 document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
 
+// Toggle Full Body IK
+document.getElementById('ik-full-body').addEventListener('change', (e) => {
+  state.ikFullBody = e.target.checked;
+});
+
 // Sliders du brush
 function bindBrushSlider(rangeId, numId, setter) {
   const range = document.getElementById(rangeId);

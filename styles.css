@@ -676,3 +676,26 @@ body {
 #ik-hint strong {
     color: #ff8800;
 }
+
+.ik-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    background: #2a2a3a;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+.ik-toggle input[type="checkbox"] {
+    margin-top: 2px;
+    accent-color: #ff8800;
+    flex-shrink: 0;
+}
+
+.ik-toggle strong {
+    color: #ff8800;
+}

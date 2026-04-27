@@ -100,6 +100,7 @@ export const state = {
     grabOffset: null,
   },
   isDraggingIK: false,
+  ikFullBody: false,           // si true : pré-pass CCD sur les extension bones
 };
 
 // Expose pour debug console

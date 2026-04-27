@@ -17,15 +17,25 @@ import { exitJointEditMode } from './joint-edit.js';
 import { attachGizmoTo } from './bones.js';
 
 // ============================================================
-// IK CHAINS — à remplir par toi
+// IK CHAINS — à remplir / ajuster selon ton rig
 // ============================================================
-// Format : { "DisplayName": { root, mid, end } }
-// Les noms doivent matcher EXACTEMENT ceux du skeleton.
+// Format : { "DisplayName": { root, mid, end, extension?: [...] } }
+//
+// extension : liste optionnelle de bones AU-DESSUS de root (épaule, colonne…)
+// qui se plient pour faire suivre le reste du corps quand la cible est loin.
+// Activable via le toggle "Full body" dans le panneau IK.
+// L'ordre va du plus proche de root au plus loin (vers la racine du squelette).
 export const ikChains = {
-  "L_Arm": { root: "L_Upperarm", mid: "L_Forearm", end: "L_Hand" },
-  "R_Arm": { root: "R_Upperarm", mid: "R_Forearm", end: "R_Hand" },
-  "L_Leg": { root: "L_Thigh",    mid: "L_Calf",    end: "L_Foot" },
-  "R_Leg": { root: "R_Thigh",    mid: "R_Calf",    end: "R_Foot" },
+  "L_Arm": {
+    root: "L_Upperarm", mid: "L_Forearm", end: "L_Hand",
+    extension: ["L_Clavicle", "Spine02", "Spine01"],
+  },
+  "R_Arm": {
+    root: "R_Upperarm", mid: "R_Forearm", end: "R_Hand",
+    extension: ["R_Clavicle", "Spine02", "Spine01"],
+  },
+  "L_Leg": { root: "L_Thigh", mid: "L_Calf", end: "L_Foot" },
+  "R_Leg": { root: "R_Thigh", mid: "R_Calf", end: "R_Foot" },
 };
 window.ikChains = ikChains;
 
@@ -71,6 +81,65 @@ function aimBoneAt(bone, childBone, targetWorld) {
     bone.quaternion.copy(_qNewWorld);
   }
   bone.updateMatrixWorld(true);
+}
+
+// ---------- CCD pré-pass : plie les bones d'extension vers la cible ----------
+// Distribue la déformation entre clavicule / colonne pour que le corps "suive"
+// quand la cible est loin (effet façon Cascadeur, version simplifiée).
+
+const _ccdQ = new THREE.Quaternion();
+const _ccdQBlend = new THREE.Quaternion();
+const _ccdQIdent = new THREE.Quaternion();
+const _ccdOldWorld = new THREE.Quaternion();
+const _ccdParentWorldInv = new THREE.Quaternion();
+const _ccdNewWorld = new THREE.Quaternion();
+const _ccdBoneWorld = new THREE.Vector3();
+const _ccdEndWorld = new THREE.Vector3();
+const _ccdToEnd = new THREE.Vector3();
+const _ccdToTarget = new THREE.Vector3();
+
+function applyWorldRotationToBone(bone, qWorld) {
+  bone.getWorldQuaternion(_ccdOldWorld);
+  _ccdNewWorld.copy(qWorld).multiply(_ccdOldWorld);
+  if (bone.parent) {
+    bone.parent.getWorldQuaternion(_ccdParentWorldInv).invert();
+    bone.quaternion.copy(_ccdParentWorldInv).multiply(_ccdNewWorld);
+  } else {
+    bone.quaternion.copy(_ccdNewWorld);
+  }
+  bone.updateMatrixWorld(true);
+}
+
+function ccdReachExtension(extensionBones, endBone, targetWorld, iterations, blend) {
+  for (let iter = 0; iter < iterations; iter++) {
+    for (const bone of extensionBones) {
+      bone.updateMatrixWorld(true);
+      bone.getWorldPosition(_ccdBoneWorld);
+      endBone.updateMatrixWorld(true);
+      endBone.getWorldPosition(_ccdEndWorld);
+
+      _ccdToEnd.copy(_ccdEndWorld).sub(_ccdBoneWorld);
+      _ccdToTarget.copy(targetWorld).sub(_ccdBoneWorld);
+      if (_ccdToEnd.lengthSq() < 1e-10 || _ccdToTarget.lengthSq() < 1e-10) continue;
+      _ccdToEnd.normalize();
+      _ccdToTarget.normalize();
+
+      _ccdQ.setFromUnitVectors(_ccdToEnd, _ccdToTarget);
+      // Blend : on n'applique qu'une fraction → distribue entre les bones
+      _ccdQBlend.copy(_ccdQIdent.identity()).slerp(_ccdQ, blend);
+      applyWorldRotationToBone(bone, _ccdQBlend);
+    }
+  }
+}
+
+// Solveur étendu : si fullBody est on, applique un CCD pré-pass sur les
+// extension bones avant la résolution 2-bones classique.
+export function solveExtendedIK(rootBone, midBone, endBone, targetWorld, poleWorld, extensionBones) {
+  if (extensionBones && extensionBones.length > 0) {
+    // Quelques itérations avec blend faible pour distribuer la déformation
+    ccdReachExtension(extensionBones, endBone, targetWorld, 3, 0.4);
+  }
+  solve2BoneIK(rootBone, midBone, endBone, targetWorld, poleWorld);
 }
 
 export function solve2BoneIK(rootBone, midBone, endBone, targetWorld, poleWorld) {
@@ -200,7 +269,11 @@ function getChainBones(chain) {
   const mid = state.bonesByName.get(chain.mid);
   const end = state.bonesByName.get(chain.end);
   if (!root || !mid || !end) return null;
-  return { root, mid, end };
+  // Resolve extension bone names → THREE.Bone[]
+  const extension = (chain.extension || [])
+    .map((n) => state.bonesByName.get(n))
+    .filter((b) => !!b);
+  return { root, mid, end, extension };
 }
 
 function placeMarkerAtEnd(marker, endBone) {
@@ -396,7 +469,12 @@ export function attachIKDragListeners() {
     if (type === 'target') targetMarker.position.copy(_ikTmp);
     else poleMarker.position.copy(_ikTmp);
 
-    solve2BoneIK(bones.root, bones.mid, bones.end, targetMarker.position, poleMarker.position);
+    const extensionBones = state.ikFullBody ? bones.extension : null;
+    solveExtendedIK(
+      bones.root, bones.mid, bones.end,
+      targetMarker.position, poleMarker.position,
+      extensionBones,
+    );
   }, true);
 
   function endIKDrag(e) {
