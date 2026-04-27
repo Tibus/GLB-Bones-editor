@@ -5,6 +5,7 @@ import { updateInfo } from './ui.js';
 import { updateRotationUI, updateBoneMarkers } from './bones.js';
 import { matchFbxAnimationToPrincipal } from './fbx-anim.js';
 import { rebuildWorldPositionCache, refreshWeightColors } from './weight-paint.js';
+import { refreshIKMarkers } from './ik.js';
 
 export function playAnimation(index, source = 'glb') {
   if (!state.mixer) return;
@@ -181,6 +182,7 @@ export function animate() {
   }
 
   updateBoneMarkers();
+  if (state.ikMode && !state.isDraggingIK) refreshIKMarkers();
   state.controls.update();
   state.renderer.render(state.scene, state.camera);
 }

@@ -17,6 +17,7 @@ import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
   attachJointDragListeners,
 } from './joint-edit.js';
+import { enterIKMode, exitIKMode, attachIKDragListeners } from './ik.js';
 
 initScene();
 
@@ -44,18 +45,25 @@ document.getElementById('toggle-rest-pose-btn').addEventListener('click', toggle
 // Click sur le canvas (sélection bone via marker)
 state.renderer.domElement.addEventListener('click', onCanvasClick);
 
-// Toggles de mode (mutuellement exclusifs)
-document.getElementById('mode-pose-btn').addEventListener('click', () => {
+function exitAllSpecialModes() {
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
-});
+  if (state.ikMode) exitIKMode();
+}
+
+// Toggles de mode (mutuellement exclusifs)
+document.getElementById('mode-pose-btn').addEventListener('click', exitAllSpecialModes);
 document.getElementById('mode-paint-btn').addEventListener('click', () => {
-  if (state.jointEditMode) exitJointEditMode();
-  if (!state.weightPaintMode) enterWeightPaintMode();
+  exitAllSpecialModes();
+  enterWeightPaintMode();
 });
 document.getElementById('mode-joints-btn').addEventListener('click', () => {
-  if (state.weightPaintMode) exitWeightPaintMode();
-  if (!state.jointEditMode) enterJointEditMode();
+  exitAllSpecialModes();
+  enterJointEditMode();
+});
+document.getElementById('mode-ik-btn').addEventListener('click', () => {
+  exitAllSpecialModes();
+  enterIKMode();
 });
 document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
 
@@ -143,12 +151,16 @@ dom.addEventListener('pointercancel', endPaint, true);
 // ---------- Drag direct des joints ----------
 attachJointDragListeners(selectBone);
 
+// ---------- Drag des cibles IK ----------
+attachIKDragListeners();
+
 // ---------- Clavier ----------
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Shift') state.brushSubtract = true;
   if (e.key === 'Escape') {
     if (state.weightPaintMode) exitWeightPaintMode();
     else if (state.jointEditMode) exitJointEditMode();
+    else if (state.ikMode) exitIKMode();
     else deselectBone();
   }
 });

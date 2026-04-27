@@ -82,6 +82,18 @@ export const state = {
   originalBoneInverses: new Map(),
   originalBonePositions: new Map(),
   isDraggingJoint: false,
+
+  // IK
+  ikMode: false,
+  ikTargetMarkers: new Map(),  // chainName -> THREE.Mesh (cible orange : poignet/cheville)
+  ikPoleMarkers: new Map(),    // chainName -> THREE.Mesh (pole cyan : direction du pli)
+  ikDragSnapshot: {
+    chainName: null,
+    type: null,                // 'target' | 'pole'
+    plane: null,
+    grabOffset: null,
+  },
+  isDraggingIK: false,
 };
 
 // Expose pour debug console

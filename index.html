@@ -37,8 +37,9 @@
 
   <div id="mode-toggle">
     <button id="mode-pose-btn" class="mode-btn active">✋ Pose</button>
-    <button id="mode-paint-btn" class="mode-btn">🎨 Weight Paint</button>
+    <button id="mode-paint-btn" class="mode-btn">🎨 Paint</button>
     <button id="mode-joints-btn" class="mode-btn">🔧 Joints</button>
+    <button id="mode-ik-btn" class="mode-btn">🎯 IK</button>
   </div>
 
   <div id="bone-list">
@@ -124,6 +125,16 @@
     </div>
 
     <button id="reset-joints-btn">🔄 Reset All Joints</button>
+  </div>
+
+  <div id="ik-controls">
+    <h4>🎯 Inverse Kinematics</h4>
+
+    <div id="ik-hint">
+      <strong style="color:#ff8800">Sphères orange</strong> = cible (poignet / cheville).<br>
+      <strong style="color:#00ddff">Sphères cyan</strong> = pole (direction du coude / genou).<br>
+      L'animation est gelée pendant le mode IK.
+    </div>
   </div>
 
   <div id="skeleton-legend">

@@ -645,3 +645,32 @@ body {
 #reset-joints-btn:hover {
     background: #8a5a4a;
 }
+
+/* IK controls */
+#ik-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#ik-controls.visible {
+    display: flex;
+}
+
+#ik-controls h4 {
+    color: #ff8800;
+    margin-bottom: 5px;
+}
+
+#ik-hint {
+    padding: 10px;
+    background: #3a2818;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.5;
+}
+
+#ik-hint strong {
+    color: #ff8800;
+}

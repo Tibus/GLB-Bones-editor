@@ -7,6 +7,7 @@ import { state } from './state.js';
 import { updateInfo, setFbxInputEnabled } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
+import { exitIKMode } from './ik.js';
 import { createAllBoneMarkers, updateBoneList } from './bones.js';
 import { updateAnimationsList, playAnimation } from './animation.js';
 
@@ -20,6 +21,7 @@ export function loadPrincipal(url, filename) {
   // Quitter les modes spéciaux pour rétablir un état propre avant dispose
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
+  if (state.ikMode) exitIKMode();
 
   // Dispose le modèle précédent
   if (state.currentModel) {
