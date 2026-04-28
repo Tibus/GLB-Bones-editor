@@ -95,6 +95,14 @@ body {
     background: #4a4a5a;
 }
 
+#export-glb-btn {
+    background: #2a6a8a;
+}
+
+#export-glb-btn:hover {
+    background: #3a7a9a;
+}
+
 #toggle-rest-pose-btn {
     background: #4a8a6a;
     width: 100%;

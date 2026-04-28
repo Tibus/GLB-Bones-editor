@@ -16,6 +16,7 @@ import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
 import { attachGizmoTo } from './bones.js';
 import { clampChain, clampBoneRotation } from './ik-constraints.js';
+import { pushUndo } from './history.js';
 
 // ============================================================
 // IK CHAINS — à remplir / ajuster selon ton rig
@@ -60,10 +61,18 @@ export const ikChains = {
     orientationPole: { axis: 'z', distance: 0.15 },
   },
 
-  "Head":   { type: 'ccd', bones: ["Spine02", "NeckTwist01", "NeckTwist02"], end: "Head", pole: true },
+  "Head": {
+    type: 'ccd',
+    bones: ["Spine02", "NeckTwist01", "NeckTwist02"],
+    end: "Head",
+    pole: true,                                       // pole cyan : axe Y (sommet de tête, incliner)
+    orientationPole: { axis: 'z', distance: 0.3 },    // pole magenta : axe Z (direction du regard)
+  },
   "Pelvis": {
     type: 'translate', bone: "Hip",
-    orientationPole: { axis: 'z', distance: 0.4 }, // direction "avant" du corps
+    // Marker placé devant en world (Z+) — le rig a le Hip en biais en local.
+    // Au drag, l'aim sur l'axe Z local va orienter le Hip vers ce point.
+    orientationPole: { axis: 'x', distance: 0.4, worldDirection: { x: 1, y: 0, z: 0 } },
   },
 };
 window.ikChains = ikChains;
@@ -205,10 +214,65 @@ export function solveExtendedIK(
   }
 }
 
+// Look-at avec up-vector : oriente le bone tel que son axe Z+ local pointe
+// vers `forwardTarget` ET son axe Y+ local soit aussi proche que possible
+// de la direction `upTarget` — sans conflit entre les deux poles (contrairement
+// à des aimAxisAt séquentiels qui s'annulent).
+const _lookFwd = new THREE.Vector3();
+const _lookUp = new THREE.Vector3();
+const _lookRight = new THREE.Vector3();
+const _lookUpFinal = new THREE.Vector3();
+const _lookMat = new THREE.Matrix4();
+const _lookQ = new THREE.Quaternion();
+const _lookParentInv = new THREE.Quaternion();
+function lookAtWithUp(bone, forwardTarget, upTarget) {
+  bone.updateMatrixWorld(true);
+  bone.getWorldPosition(_ccdBoneWorld);
+
+  _lookFwd.copy(forwardTarget).sub(_ccdBoneWorld);
+  if (_lookFwd.lengthSq() < 1e-10) return;
+  _lookFwd.normalize();
+
+  _lookUp.copy(upTarget).sub(_ccdBoneWorld);
+  if (_lookUp.lengthSq() < 1e-10) return;
+  _lookUp.normalize();
+
+  // Pour un repère orthonormé droit (det = +1) avec Z = forward et Y ≈ up :
+  //   X = up × forward,  Y = forward × X
+  // (l'ordre des cross matters — l'inverse donne une réflexion qui skew le bone)
+  _lookRight.crossVectors(_lookUp, _lookFwd);
+  if (_lookRight.lengthSq() < 1e-8) {
+    _lookUp.set(0, 1, 0);
+    _lookRight.crossVectors(_lookUp, _lookFwd);
+    if (_lookRight.lengthSq() < 1e-8) return;
+  }
+  _lookRight.normalize();
+
+  // Up perpendiculaire à forward et right (forward × right = up corrigé)
+  _lookUpFinal.crossVectors(_lookFwd, _lookRight);
+
+  // Colonnes de la matrice de rotation : X, Y, Z = right, upCorrected, forward
+  _lookMat.makeBasis(_lookRight, _lookUpFinal, _lookFwd);
+  _lookQ.setFromRotationMatrix(_lookMat);
+
+  if (bone.parent) {
+    bone.parent.getWorldQuaternion(_lookParentInv).invert();
+    bone.quaternion.copy(_lookParentInv).multiply(_lookQ);
+  } else {
+    bone.quaternion.copy(_lookQ);
+  }
+  bone.updateMatrixWorld(true);
+}
+
 // CCD chain solver : plie progressivement une chaîne de bones pour amener
 // `endBone` à la cible (utilisé pour la tête).
-// Si `poleWorld` fourni, oriente après coup l'axe Y du end vers le pole.
-export function solveCCDChain(bones, endBone, targetWorld, poleWorld = null, iterations = 5, blend = 0.6) {
+// - `poleWorld` (axe Y) et `orientationPoleWorld` (axe Z) ensemble → look-at-with-up
+// - sinon, aim sur l'axe disponible.
+export function solveCCDChain(
+  bones, endBone, targetWorld,
+  poleWorld = null, orientationPoleWorld = null,
+  iterations = 5, blend = 0.6,
+) {
   for (let iter = 0; iter < iterations; iter++) {
     // De l'effecteur vers la racine (CCD classique)
     for (let i = bones.length - 1; i >= 0; i--) {
@@ -233,8 +297,16 @@ export function solveCCDChain(bones, endBone, targetWorld, poleWorld = null, ite
     for (const b of bones) clampBoneRotation(b);
   }
 
-  // Pole d'orientation : aim l'axe Y local du end vers le pole
-  if (poleWorld) aimBoneAxisAt(endBone, 'y', poleWorld);
+  // Orientation de l'effecteur :
+  // - si on a Y et Z poles → look-at-with-up (pas de conflit)
+  // - sinon, aim sur l'axe disponible
+  if (poleWorld && orientationPoleWorld) {
+    lookAtWithUp(endBone, orientationPoleWorld, poleWorld);
+  } else if (poleWorld) {
+    aimBoneAxisAt(endBone, 'y', poleWorld);
+  } else if (orientationPoleWorld) {
+    aimBoneAxisAt(endBone, 'z', orientationPoleWorld);
+  }
 }
 
 // Translate directement un bone à une position monde donnée (pelvis).
@@ -373,6 +445,59 @@ function createPoleMarker() {
   return sphere;
 }
 
+// Ligne reliant un pole/orientation marker au bone qu'il dirige.
+// Mise à jour à chaque frame via updateIKConnectionLines().
+function createConnectionLine(color) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.4,
+    depthTest: false,
+  });
+  const line = new THREE.LineSegments(geom, mat);
+  line.renderOrder = 999;
+  line.frustumCulled = false;
+  return line;
+}
+
+const _lineFrom = new THREE.Vector3();
+const _lineTo = new THREE.Vector3();
+
+export function updateIKConnectionLines() {
+  if (!state.ikMode) return;
+  for (const line of state.ikConnectionLines) {
+    const fromMarker = line.userData.fromMarker;
+    const toBone = line.userData.toBone;
+    if (!fromMarker || !toBone) continue;
+    _lineFrom.copy(fromMarker.position);
+    toBone.updateMatrixWorld(true);
+    toBone.getWorldPosition(_lineTo);
+    const arr = line.geometry.attributes.position.array;
+    arr[0] = _lineFrom.x; arr[1] = _lineFrom.y; arr[2] = _lineFrom.z;
+    arr[3] = _lineTo.x;   arr[4] = _lineTo.y;   arr[5] = _lineTo.z;
+    line.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+function addConnectionLine(marker, targetBone, color) {
+  const line = createConnectionLine(color);
+  line.userData.fromMarker = marker;
+  line.userData.toBone = targetBone;
+  state.scene.add(line);
+  state.ikConnectionLines.push(line);
+}
+
+function disposeConnectionLines() {
+  for (const line of state.ikConnectionLines) {
+    state.scene.remove(line);
+    line.geometry.dispose();
+    line.material.dispose();
+  }
+  state.ikConnectionLines.length = 0;
+}
+
 function createOrientationMarker() {
   const sphere = new THREE.Mesh(
     new THREE.SphereGeometry(0.022, 14, 14),
@@ -401,8 +526,16 @@ function localAxisVector(axis, out) {
 function computeInitialOrientationPole(endBone, opts, out) {
   endBone.updateMatrixWorld(true);
   endBone.getWorldPosition(out);
-  endBone.getWorldQuaternion(_oriQuat);
-  localAxisVector(opts.axis || 'z', _oriAxis).applyQuaternion(_oriQuat);
+  if (opts.worldDirection) {
+    // Direction explicitement en world (utile quand l'axe local du bone ne pointe
+    // pas dans la direction "naturelle" — ex: pelvis dont le Z+ local est en biais).
+    const d = opts.worldDirection;
+    _oriAxis.set(d.x || 0, d.y || 0, d.z || 0);
+    if (_oriAxis.lengthSq() > 1e-10) _oriAxis.normalize();
+  } else {
+    endBone.getWorldQuaternion(_oriQuat);
+    localAxisVector(opts.axis || 'z', _oriAxis).applyQuaternion(_oriQuat);
+  }
   out.addScaledVector(_oriAxis, opts.distance ?? 0.15);
 }
 
@@ -445,10 +578,18 @@ function computeInitialPolePosition(rootBone, midBone, endBone, out, multiplier 
   const toMid = mW.clone().sub(rW);
   const dot = toMid.dot(toEnd);
   const perp = toMid.clone().addScaledVector(toEnd, -dot);
-  if (perp.lengthSq() < 1e-8) {
-    perp.set(0, 1, 0);
+
+  // Si la chaîne est presque tendue (mid quasi sur la ligne root→end), perp est
+  // trop court pour donner une direction stable. Fallback : Z+ world ("devant"
+  // pour un humanoïde) projeté perpendiculaire à la chaîne, plus robuste que Y+
+  // qui placerait le pole au-dessus pour les jambes ou bras horizontaux.
+  if (perp.length() < 0.01) {
+    perp.set(0, 0, 1);
     perp.addScaledVector(toEnd, -perp.dot(toEnd));
-    if (perp.lengthSq() < 1e-8) perp.set(0, 0, 1);
+    if (perp.lengthSq() < 1e-8) {
+      perp.set(0, 1, 0);
+      perp.addScaledVector(toEnd, -perp.dot(toEnd));
+    }
   }
   perp.normalize();
 
@@ -504,7 +645,11 @@ function getChainBones(chain) {
       .filter(Boolean);
     const end = state.bonesByName.get(chain.end);
     if (!end || ccdBones.length === 0) return null;
-    return { type, ccdBones, end, pole: !!chain.pole };
+    return {
+      type, ccdBones, end,
+      pole: !!chain.pole,
+      orientationPole: chain.orientationPole || null,
+    };
   }
   if (type === 'translate') {
     const bone = state.bonesByName.get(chain.bone);
@@ -578,13 +723,16 @@ export function enterIKMode() {
       );
       state.scene.add(pole);
       state.ikPoleMarkers.set(name, pole);
+      // Ligne pole → mid (coude / genou)
+      addConnectionLine(pole, bones.mid, 0x00ddff);
     } else if (bones.type === 'ccd' && bones.pole) {
       const pole = createPoleMarker();
       pole.userData.chainName = name;
-      // Pole de la tête : initial au-dessus du end (axe Y world+)
       computeInitialCCDPolePosition(bones.end, pole.position);
       state.scene.add(pole);
       state.ikPoleMarkers.set(name, pole);
+      // Ligne pole → end (sommet de la tête)
+      addConnectionLine(pole, bones.end, 0x00ddff);
     }
 
     // Pole d'orientation (axe Z par défaut) : pour mains, pieds, pelvis
@@ -596,6 +744,8 @@ export function enterIKMode() {
         computeInitialOrientationPole(endBone, bones.orientationPole, oriMarker.position);
         state.scene.add(oriMarker);
         state.ikOrientationMarkers.set(name, oriMarker);
+        // Ligne orientation → end (le bone qu'elle oriente)
+        addConnectionLine(oriMarker, endBone, 0xff44ff);
       }
     }
 
@@ -649,6 +799,7 @@ export function exitIKMode() {
   state.ikPoleMarkers.clear();
   state.ikOrientationMarkers.forEach(disposeMarker);
   state.ikOrientationMarkers.clear();
+  disposeConnectionLines();
 
   state.ikDragSnapshot.chainName = null;
   state.ikDragSnapshot.type = null;
@@ -760,6 +911,8 @@ export function attachIKDragListeners() {
 
     _ikGrab.copy(marker.position).sub(hitOnPlane);
 
+    pushUndo();
+
     state.ikDragSnapshot.chainName = chainName;
     state.ikDragSnapshot.type = type;
     state.ikDragSnapshot.plane = _ikPlane;
@@ -830,6 +983,7 @@ export function attachIKDragListeners() {
         bones.ccdBones, bones.end,
         targetMarker.position,
         poleMarker ? poleMarker.position : null,
+        oriMarker ? oriMarker.position : null,
       );
     } else if (bones.type === 'translate') {
       translateBoneTo(bones.bone, targetMarker.position);

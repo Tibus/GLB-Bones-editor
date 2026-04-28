@@ -8,6 +8,7 @@ import { updateInfo, setFbxInputEnabled } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
 import { exitIKMode } from './ik.js';
+import { clearHistory } from './history.js';
 import { createAllBoneMarkers, updateBoneList } from './bones.js';
 import { updateAnimationsList, playAnimation } from './animation.js';
 
@@ -22,6 +23,7 @@ export function loadPrincipal(url, filename) {
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
   if (state.ikMode) exitIKMode();
+  clearHistory();
 
   // Dispose le modèle précédent
   if (state.currentModel) {
@@ -174,6 +176,18 @@ function manageCurrentModelAfterLoad() {
 
   state.scene.add(state.currentModel);
   state.currentModel.updateWorldMatrix(true, true);
+
+  // Repositionne verticalement le modèle pour que le bone root du squelette soit à Y=0.
+  // Cohérent avec le ikGroundY (qui prend la Y du root) → le sol logique est aligné.
+  if (state.bones.length > 0) {
+    let rootBone = state.bones[0];
+    while (rootBone.parent && rootBone.parent.isBone) rootBone = rootBone.parent;
+    rootBone.updateMatrixWorld(true);
+    const rootWorldY = rootBone.getWorldPosition(new THREE.Vector3()).y;
+    state.currentModel.position.y -= rootWorldY;
+    state.currentModel.updateWorldMatrix(true, true);
+  }
+
   state.hipsOriginalPosition = state.bonesByName.get('Hip')?.getWorldPosition(new THREE.Vector3());
 
   if (skinnedMesh && skinnedMesh.skeleton) {

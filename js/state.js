@@ -94,6 +94,7 @@ export const state = {
   ikTargetMarkers: new Map(),       // chainName -> Mesh (cible orange — main, pied, tête, pelvis)
   ikPoleMarkers: new Map(),         // chainName -> Mesh (pole cyan — coude, genou, sommet de tête)
   ikOrientationMarkers: new Map(),  // chainName -> Mesh (pole magenta — orientation du end bone)
+  ikConnectionLines: [],            // Lines reliant chaque pole/orientation au bone qu'il dirige
   ikDragSnapshot: {
     chainName: null,
     type: null,                // 'target' | 'pole'
@@ -107,6 +108,10 @@ export const state = {
   ikGroundY: 0,                  // hauteur du sol (en world Y)
   ikFeetSnapshot: null,          // snapshot des positions de pieds pour le lock
   ikGroundPreview: null,         // THREE.Mesh affiché au niveau du sol quand lock feet est on
+
+  // ArrowHelper affichant l'axe Y local du bone sélectionné en mode joints
+  // (mains/pieds) — pour visualiser le sens de la main/pied.
+  jointAxisArrow: null,
 };
 
 // Expose pour debug console

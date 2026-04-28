@@ -69,11 +69,11 @@ export function matchFbxAnimationToPrincipal() {
 
   if (bonesByName.get("R_Upperarm")) rotateOnParent(bonesByName.get("R_Upperarm"), 0, -Math.PI / 2, 0);
   bonesByName.get("R_UpperarmTwist01")?.rotateY(Math.PI / 2);
-  bonesByName.get("R_Hand")?.rotateY(Math.PI / 2);
+  // bonesByName.get("R_Hand")?.rotateY(Math.PI / 2);
 
   if (bonesByName.get("L_Upperarm")) rotateOnParent(bonesByName.get("L_Upperarm"), 0, Math.PI / 2, 0);
   bonesByName.get("L_UpperarmTwist01")?.rotateY(-Math.PI / 2);
-  bonesByName.get("L_Hand")?.rotateY(-Math.PI / 2);
+  // bonesByName.get("L_Hand")?.rotateY(-Math.PI / 2);
 
   bonesByName.get("Pelvis")?.rotateY(Math.PI);
   if (bonesByName.get("L_Thigh")) rotateOnParent(bonesByName.get("L_Thigh"), 0, Math.PI, 0);

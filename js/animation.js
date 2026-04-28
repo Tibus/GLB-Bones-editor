@@ -1,11 +1,36 @@
 // Animations : play/pause, rest pose, skeleton helper visibility, animations list, boucle render.
 
+import * as THREE from 'three';
 import { state } from './state.js';
 import { updateInfo } from './ui.js';
 import { updateRotationUI, updateBoneMarkers } from './bones.js';
 import { matchFbxAnimationToPrincipal } from './fbx-anim.js';
 import { rebuildWorldPositionCache, refreshWeightColors } from './weight-paint.js';
-import { refreshIKMarkers } from './ik.js';
+import { refreshIKMarkers, updateIKConnectionLines } from './ik.js';
+import { isBoneRotatableInJointMode, getJointAxisForBone } from './joint-edit.js';
+
+const _arrowDir = new THREE.Vector3();
+const _arrowQ = new THREE.Quaternion();
+
+function updateJointAxisArrow() {
+  const arrow = state.jointAxisArrow;
+  if (!arrow) return;
+  const bone = state.selectedBone;
+  if (state.jointEditMode && bone && isBoneRotatableInJointMode(bone)) {
+    bone.updateMatrixWorld(true);
+    bone.getWorldPosition(arrow.position);
+    bone.getWorldQuaternion(_arrowQ);
+    const axis = getJointAxisForBone(bone);
+    if (axis === 'x') _arrowDir.set(1, 0, 0);
+    else if (axis === 'y') _arrowDir.set(0, 1, 0);
+    else _arrowDir.set(0, 0, 1);
+    _arrowDir.applyQuaternion(_arrowQ);
+    arrow.setDirection(_arrowDir);
+    arrow.visible = true;
+  } else {
+    arrow.visible = false;
+  }
+}
 
 export function playAnimation(index, source = 'glb') {
   if (!state.mixer) return;
@@ -169,13 +194,17 @@ export function animate() {
   requestAnimationFrame(animate);
   const delta = state.clock.getDelta();
 
-  if (state.mixerFbx) {
-    if (!state.atRestPose) {
+  // En modes spéciaux on saute entièrement mixer.update — sinon le mixer
+  // ré-écrit les rotations des bones à chaque frame avec les valeurs animées
+  // au temps figé (timeScale=0 ne suffit pas, les tracks sont quand même évaluées).
+  const inSpecialMode = state.jointEditMode || state.weightPaintMode || state.ikMode;
+  const shouldUpdateAnim = !state.atRestPose && !inSpecialMode;
+
+  if (shouldUpdateAnim) {
+    if (state.mixerFbx) {
       state.mixerFbx.update(delta);
       if (state.isPlaying) matchFbxAnimationToPrincipal();
-    }
-  } else if (state.mixer) {
-    if (!state.atRestPose) {
+    } else if (state.mixer) {
       state.mixer.update(delta);
       if (state.isPlaying && state.selectedBone) updateRotationUI();
     }
@@ -183,6 +212,8 @@ export function animate() {
 
   updateBoneMarkers();
   if (state.ikMode && !state.isDraggingIK) refreshIKMarkers();
+  if (state.ikMode) updateIKConnectionLines();
+  updateJointAxisArrow();
   state.controls.update();
   state.renderer.render(state.scene, state.camera);
 }

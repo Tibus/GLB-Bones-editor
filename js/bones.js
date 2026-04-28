@@ -5,6 +5,7 @@ import { state } from './state.js';
 import { isTwistBone } from './utils.js';
 import { updatePaintBoneName, refreshWeightColors } from './weight-paint.js';
 import { updateJointBoneName, isBoneRotatableInJointMode } from './joint-edit.js';
+import { pushUndo } from './history.js';
 
 // ---------- Markers ----------
 
@@ -230,6 +231,7 @@ export function resetBoneRotation() {
   if (!state.selectedBone) return;
   const originalRot = state.originalBoneRotations.get(state.selectedBone.uuid);
   if (originalRot) {
+    pushUndo();
     state.selectedBone.rotation.copy(originalRot);
     updateRotationUI();
   }

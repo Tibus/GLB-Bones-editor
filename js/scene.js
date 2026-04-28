@@ -94,4 +94,21 @@ export function initScene() {
   brushHelper.visible = false;
   scene.add(brushHelper);
   state.brushHelper = brushHelper;
+
+  // ArrowHelper pour montrer l'axe Y local du bone sélectionné (mode joints)
+  const arrow = new THREE.ArrowHelper(
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(0, 0, 0),
+    0.30,        // longueur
+    0x00ff66,    // vert clair
+    0.05,        // headLength
+    0.035,       // headWidth
+  );
+  arrow.line.material.depthTest = false;
+  arrow.cone.material.depthTest = false;
+  arrow.line.renderOrder = 1002;
+  arrow.cone.renderOrder = 1002;
+  arrow.visible = false;
+  scene.add(arrow);
+  state.jointAxisArrow = arrow;
 }

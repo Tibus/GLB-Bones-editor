@@ -18,6 +18,8 @@ import {
   attachJointDragListeners, attachJointRotationListeners,
 } from './joint-edit.js';
 import { enterIKMode, exitIKMode, attachIKDragListeners, updateGroundPreview } from './ik.js';
+import { undo, redo, pushUndo } from './history.js';
+import { exportToGLB } from './exporter.js';
 
 initScene();
 
@@ -25,6 +27,11 @@ initScene();
 // car en weight paint et joints le gizmo est détaché).
 state.transformControls.addEventListener('change', () => {
   if (state.selectedBone) updateRotationUI();
+});
+
+// Snapshot undo avant chaque drag du gizmo
+state.transformControls.addEventListener('mouseDown', () => {
+  if (state.selectedBone) pushUndo();
 });
 
 // File inputs
@@ -41,6 +48,7 @@ document.getElementById('fbx-input').addEventListener('change', (e) => {
 document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
 document.getElementById('toggle-skeleton-btn').addEventListener('click', toggleSkeleton);
 document.getElementById('toggle-rest-pose-btn').addEventListener('click', toggleRestPose);
+document.getElementById('export-glb-btn').addEventListener('click', exportToGLB);
 
 // Click sur le canvas (sélection bone via marker)
 state.renderer.domElement.addEventListener('click', onCanvasClick);
@@ -119,6 +127,7 @@ dom.addEventListener('pointerdown', (e) => {
   state.controls.enabled = false;
   try { dom.setPointerCapture(e.pointerId); } catch (_) {}
   state.brushSubtract = e.shiftKey;
+  pushUndo(); // snapshot AVANT le premier coup de brush du stroke
   paintAtPointer(e);
 }, true);
 
@@ -176,17 +185,37 @@ document.addEventListener('keydown', (e) => {
     else if (state.ikMode) exitIKMode();
     else deselectBone();
   }
+
+  // Undo / Redo (ignorer si focus sur un input pour ne pas casser les sliders)
+  const target = e.target;
+  const inForm = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+  if (!inForm && (e.ctrlKey || e.metaKey)) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+    } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  }
 });
 document.addEventListener('keyup', (e) => {
   if (e.key === 'Shift') state.brushSubtract = false;
 });
 
 // ---------- Sliders rotation ----------
+// On snapshot une seule fois au pointerdown du slider (début d'une session
+// d'édition continue) pour ne pas spammer l'historique pendant un drag.
 ['x', 'y', 'z'].forEach((axis) => {
-  document.getElementById(`rot-${axis}`).addEventListener('input', (e) => {
+  const range = document.getElementById(`rot-${axis}`);
+  const num = document.getElementById(`rot-${axis}-num`);
+  range.addEventListener('pointerdown', () => { if (state.selectedBone) pushUndo(); });
+  num.addEventListener('focus', () => { if (state.selectedBone) pushUndo(); });
+  range.addEventListener('input', (e) => {
     updateBoneRotation(axis, parseFloat(e.target.value));
   });
-  document.getElementById(`rot-${axis}-num`).addEventListener('input', (e) => {
+  num.addEventListener('input', (e) => {
     let val = parseFloat(e.target.value) || 0;
     val = Math.max(-180, Math.min(180, val));
     updateBoneRotation(axis, val);

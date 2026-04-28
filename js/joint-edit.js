@@ -15,6 +15,7 @@ import { isDescendantOf, depthFromRoot } from './utils.js';
 import { updateInfo } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { pickStackedBones, pickNextInStack, attachGizmoTo } from './bones.js';
+import { pushUndo } from './history.js';
 
 // ============================================================
 // BONES ROTATABLES EN MODE JOINTS — à remplir par toi
@@ -24,15 +25,26 @@ import { pickStackedBones, pickNextInStack, attachGizmoTo } from './bones.js';
 // du bone : un boneInverse mis à jour ⇒ vertex figés, et les enfants
 // directs gardent leur position+rotation monde inchangées.
 // Utile pour corriger l'orientation de référence (mains, pieds).
-export const rotatableInJointMode = new Set([
-  "L_Hand", "R_Hand",
-  "L_Foot", "R_Foot",
+// Map "BoneName" → { axis } : axe local affiché par la flèche helper
+// pour visualiser le sens du bone (mains : axe Z+ = doigts, pieds : axe X+ = pointe).
+export const rotatableInJointMode = new Map([
+  ["L_Hand", { axis: 'z' }],
+  ["R_Hand", { axis: 'z' }],
+  ["L_Foot", { axis: 'y' }],
+  ["R_Foot", { axis: 'y' }],
 ]);
 window.rotatableInJointMode = rotatableInJointMode;
 
 export function isBoneRotatableInJointMode(bone) {
   if (!bone) return false;
   return rotatableInJointMode.has(bone.name);
+}
+
+// Renvoie l'axe local ('x'|'y'|'z') à afficher par la flèche helper.
+export function getJointAxisForBone(bone) {
+  if (!bone) return 'z';
+  const cfg = rotatableInJointMode.get(bone.name);
+  return cfg?.axis || 'z';
 }
 
 // ============================================================
@@ -354,6 +366,7 @@ export function updateJointBoneName() {
 }
 
 export function resetAllJoints() {
+  pushUndo();
   for (const sm of state.skinnedMeshes) {
     const orig = state.originalBoneInverses.get(sm);
     if (!orig) continue;
@@ -398,10 +411,13 @@ export function attachJointDragListeners(selectBone) {
     selectBone(marker.userData.boneIndex);
     if (!state.selectedBone) return;
 
-    // Si le bone est rotatable (main/pied) : on ne démarre PAS de drag de translation,
-    // on laisse l'utilisateur interagir avec le gizmo de rotation à la place.
-    if (isBoneRotatableInJointMode(state.selectedBone)) return;
+    // Le drag de translation démarre dès qu'on clique sur le marker (la sphère),
+    // même pour les bones rotatables : ainsi mains/pieds restent translatables.
+    // Pour ROTATER ces bones, l'utilisateur clique directement sur les anneaux
+    // RGB du gizmo (qui ne sont pas dans state.boneMarkers, donc mon raycast
+    // les ignore — TransformControls reçoit alors le pointerdown).
 
+    pushUndo();
     snapshotJointDrag(state.selectedBone);
 
     // Plan parallèle à la caméra, passant par le bone
