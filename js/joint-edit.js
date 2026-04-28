@@ -122,6 +122,74 @@ const _jointInv = new THREE.Matrix4();
 const _jointTmpVec = new THREE.Vector3();
 const _jointDelta = new THREE.Vector3();
 
+// Helpers pour ré-orienter les twists après un drag de translation.
+const _reaimAxis = new THREE.Vector3();
+const _reaimDir = new THREE.Vector3();
+const _reaimBoneWorld = new THREE.Vector3();
+const _reaimTargetWorld = new THREE.Vector3();
+const _reaimQ = new THREE.Quaternion();
+const _reaimOldWorld = new THREE.Quaternion();
+const _reaimNewWorld = new THREE.Quaternion();
+const _reaimParentInv = new THREE.Quaternion();
+
+// Aligne l'axe Y local du `bone` vers `targetWorld` (utilisé pour les twists qui
+// doivent suivre l'axe parent→main-child quand le pivot du parent a bougé).
+function aimYAxisOfBone(bone, targetWorld) {
+  bone.updateMatrixWorld(true);
+  bone.getWorldPosition(_reaimBoneWorld);
+  bone.getWorldQuaternion(_reaimOldWorld);
+  _reaimAxis.set(0, 1, 0).applyQuaternion(_reaimOldWorld);
+  _reaimDir.copy(targetWorld).sub(_reaimBoneWorld);
+  if (_reaimAxis.lengthSq() < 1e-10 || _reaimDir.lengthSq() < 1e-10) return;
+  _reaimDir.normalize();
+  _reaimQ.setFromUnitVectors(_reaimAxis, _reaimDir);
+  _reaimNewWorld.copy(_reaimQ).multiply(_reaimOldWorld);
+  if (bone.parent) {
+    bone.parent.getWorldQuaternion(_reaimParentInv).invert();
+    bone.quaternion.copy(_reaimParentInv).multiply(_reaimNewWorld);
+  } else {
+    bone.quaternion.copy(_reaimNewWorld);
+  }
+  bone.updateMatrixWorld(true);
+}
+
+// Cherche un enfant du `parent` qui n'est PAS dans le followSet
+// (= un main child non-twist, typiquement Foot/Hand). Renvoie sa worldPos.
+function findMainChildWorld(parent, followSet, out) {
+  for (const c of parent.children) {
+    if (!c.isBone) continue;
+    if (followSet.has(c)) continue;
+    c.updateMatrixWorld(true);
+    c.getWorldPosition(out);
+    return true;
+  }
+  return false;
+}
+
+// Pour chaque twist linké enfant direct de B, ré-oriente son axe Y vers le main
+// child de B (le bone non-twist), puis re-update son boneInverse pour préserver S.
+function reorientLinkedTwists(B) {
+  const snap = state.jointDragSnapshot;
+  if (!findMainChildWorld(B, snap.followSet, _reaimTargetWorld)) return;
+
+  for (const X of snap.followSet) {
+    if (X === B) continue;
+    if (X.parent !== B) continue;
+
+    aimYAxisOfBone(X, _reaimTargetWorld);
+
+    // Re-update boneInverse pour préserver S = matrixWorld * boneInverse = S_snapshot
+    const perMesh = snap.skinningPerMesh.get(X);
+    if (!perMesh || perMesh.size === 0) continue;
+    _jointInv.copy(X.matrixWorld).invert();
+    for (const [sm, S_snapshot] of perMesh) {
+      const idx = sm.skeleton.bones.indexOf(X);
+      if (idx < 0) continue;
+      sm.skeleton.boneInverses[idx].multiplyMatrices(_jointInv, S_snapshot);
+    }
+  }
+}
+
 function applyJointDragCompensation() {
   const snap = state.jointDragSnapshot;
   const B = snap.bone;
@@ -176,6 +244,11 @@ function applyJointDragCompensation() {
     child.position.copy(_jointTmpVec);
     child.updateMatrixWorld(true);
   }
+
+  // 5. Ré-orienter les twists linkés (enfants directs de B) pour qu'ils suivent
+  //    l'axe parent → main-child non-twist (sinon leur direction reste fixe alors
+  //    que l'axe naturel du parent a changé → animations bizarres ensuite).
+  reorientLinkedTwists(B);
 }
 
 function clearJointDragSnapshot() {
