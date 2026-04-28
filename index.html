@@ -132,14 +132,25 @@
     <h4>🎯 Inverse Kinematics</h4>
 
     <div id="ik-hint">
-      <strong style="color:#ff8800">Sphères orange</strong> = cible (poignet / cheville).<br>
-      <strong style="color:#00ddff">Sphères cyan</strong> = pole (direction du coude / genou).<br>
+      <strong style="color:#ff8800">Sphères orange</strong> = cibles (positions).<br>
+      <strong style="color:#00ddff">Sphères cyan</strong> = poles (coudes, genoux, sommet de tête).<br>
+      <strong style="color:#ff44ff">Sphères magenta</strong> = orientation (mains, pieds, pelvis).<br>
       L'animation est gelée pendant le mode IK.
     </div>
 
     <label class="ik-toggle">
       <input type="checkbox" id="ik-full-body">
       <span><strong>Full body</strong> — le reste du corps suit (clavicule + colonne plient)</span>
+    </label>
+
+    <label class="ik-toggle">
+      <input type="checkbox" id="ik-lock-feet">
+      <span><strong>Lock feet</strong> — les pieds restent collés au sol pendant le drag</span>
+    </label>
+
+    <label class="ik-toggle">
+      <input type="checkbox" id="ik-constraints" checked>
+      <span><strong>Anatomic constraints</strong> — limite genoux, coudes, colonne</span>
     </label>
   </div>
 

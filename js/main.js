@@ -17,7 +17,7 @@ import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
   attachJointDragListeners, attachJointRotationListeners,
 } from './joint-edit.js';
-import { enterIKMode, exitIKMode, attachIKDragListeners } from './ik.js';
+import { enterIKMode, exitIKMode, attachIKDragListeners, updateGroundPreview } from './ik.js';
 
 initScene();
 
@@ -67,9 +67,16 @@ document.getElementById('mode-ik-btn').addEventListener('click', () => {
 });
 document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
 
-// Toggle Full Body IK
+// Toggles IK
 document.getElementById('ik-full-body').addEventListener('change', (e) => {
   state.ikFullBody = e.target.checked;
+});
+document.getElementById('ik-lock-feet').addEventListener('change', (e) => {
+  state.ikLockFeet = e.target.checked;
+  updateGroundPreview();
+});
+document.getElementById('ik-constraints').addEventListener('change', (e) => {
+  state.ikConstraintsEnabled = e.target.checked;
 });
 
 // Sliders du brush

@@ -91,8 +91,9 @@ export const state = {
 
   // IK
   ikMode: false,
-  ikTargetMarkers: new Map(),  // chainName -> THREE.Mesh (cible orange : poignet/cheville)
-  ikPoleMarkers: new Map(),    // chainName -> THREE.Mesh (pole cyan : direction du pli)
+  ikTargetMarkers: new Map(),       // chainName -> Mesh (cible orange — main, pied, tête, pelvis)
+  ikPoleMarkers: new Map(),         // chainName -> Mesh (pole cyan — coude, genou, sommet de tête)
+  ikOrientationMarkers: new Map(),  // chainName -> Mesh (pole magenta — orientation du end bone)
   ikDragSnapshot: {
     chainName: null,
     type: null,                // 'target' | 'pole'
@@ -100,7 +101,12 @@ export const state = {
     grabOffset: null,
   },
   isDraggingIK: false,
-  ikFullBody: false,           // si true : pré-pass CCD sur les extension bones
+  ikFullBody: false,             // pré-pass CCD sur les extension bones
+  ikConstraintsEnabled: true,    // clamp anatomique (genoux/coudes/colonne)
+  ikLockFeet: false,             // verrouille les pieds au sol pendant un drag
+  ikGroundY: 0,                  // hauteur du sol (en world Y)
+  ikFeetSnapshot: null,          // snapshot des positions de pieds pour le lock
+  ikGroundPreview: null,         // THREE.Mesh affiché au niveau du sol quand lock feet est on
 };
 
 // Expose pour debug console
