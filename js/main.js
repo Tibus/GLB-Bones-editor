@@ -12,6 +12,7 @@ import { loadPrincipal, loadFBXAnimation } from './loader.js';
 import {
   enterWeightPaintMode, exitWeightPaintMode,
   updateBrushHelper, paintAtPointer,
+  smoothSelectedBoneWeights,
 } from './weight-paint.js';
 import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
@@ -74,6 +75,11 @@ document.getElementById('mode-ik-btn').addEventListener('click', () => {
   enterIKMode();
 });
 document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
+
+document.getElementById('smooth-weights-btn').addEventListener('click', () => {
+  if (state.weightPaintMode && state.selectedBone) pushUndo();
+  smoothSelectedBoneWeights();
+});
 
 // Toggles IK
 document.getElementById('ik-full-body').addEventListener('change', (e) => {
@@ -198,6 +204,20 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       redo();
     }
+  }
+
+  // Navigation flèches haut/bas dans la liste des bones (cycle aux extrémités)
+  if (!inForm && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && state.bones.length > 0) {
+    e.preventDefault();
+    const n = state.bones.length;
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+    let newIdx;
+    if (state.selectedBoneIndex < 0) {
+      newIdx = dir === 1 ? 0 : n - 1;
+    } else {
+      newIdx = (state.selectedBoneIndex + dir + n) % n;
+    }
+    selectBone(newIdx);
   }
 });
 document.addEventListener('keyup', (e) => {

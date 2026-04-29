@@ -376,6 +376,100 @@ function applyWeightDelta(mesh, vertexIdx, boneIdx, delta) {
   }
 }
 
+// ---------- Smooth weights (lisse les poids du bone sélectionné) ----------
+
+// Construit l'adjacence de chaque vertex (indices des vertices connectés par une arête).
+function buildVertexAdjacency(geometry) {
+  const posCount = geometry.attributes.position.count;
+  const adj = new Array(posCount);
+  for (let i = 0; i < posCount; i++) adj[i] = new Set();
+  const indexAttr = geometry.index;
+  if (!indexAttr) return adj;
+  const triCount = (indexAttr.count / 3) | 0;
+  for (let t = 0; t < triCount; t++) {
+    const a = indexAttr.getX(t * 3);
+    const b = indexAttr.getX(t * 3 + 1);
+    const c = indexAttr.getX(t * 3 + 2);
+    adj[a].add(b); adj[a].add(c);
+    adj[b].add(a); adj[b].add(c);
+    adj[c].add(a); adj[c].add(b);
+  }
+  return adj;
+}
+
+// Lisse les poids du bone (moyenne avec voisins). Réutilise applyWeightDelta pour
+// garantir que la somme des 4 slots reste à 1.0 par vertex.
+function smoothBoneWeightsOnMesh(mesh, boneIdx) {
+  const geom = mesh.geometry;
+  const skinIndex = geom.attributes.skinIndex;
+  const skinWeight = geom.attributes.skinWeight;
+  if (!skinIndex || !skinWeight) return 0;
+
+  const vertexCount = geom.attributes.position.count;
+  const adj = buildVertexAdjacency(geom);
+
+  // Poids actuels du bone (somme sur les 4 slots) pour chaque vertex
+  const current = new Float32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) {
+    let w = 0;
+    for (let k = 0; k < 4; k++) {
+      if (skinIndex.getComponent(i, k) === boneIdx) {
+        w += skinWeight.getComponent(i, k);
+      }
+    }
+    current[i] = w;
+  }
+
+  // Moyenne avec les voisins
+  const target = new Float32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) {
+    let sum = current[i];
+    let count = 1;
+    for (const n of adj[i]) { sum += current[n]; count++; }
+    target[i] = sum / count;
+  }
+
+  // Application via applyWeightDelta (gère la normalisation à 1.0)
+  let touched = 0;
+  for (let i = 0; i < vertexCount; i++) {
+    const delta = target[i] - current[i];
+    if (Math.abs(delta) < 1e-6) continue;
+    applyWeightDelta(mesh, i, boneIdx, delta);
+    touched++;
+  }
+  return touched;
+}
+
+export function smoothSelectedBoneWeights() {
+  if (!state.weightPaintMode) {
+    updateInfo('Smooth disponible uniquement en mode Weight Paint.');
+    return;
+  }
+  if (!state.selectedBone) {
+    updateInfo("Sélectionne d'abord un bone à lisser.");
+    return;
+  }
+
+  let totalTouched = 0;
+  for (const mesh of state.skinnedMeshes) {
+    const boneIdx = mesh.skeleton.bones.indexOf(state.selectedBone);
+    if (boneIdx < 0) continue;
+    const touched = smoothBoneWeightsOnMesh(mesh, boneIdx);
+    if (touched > 0) {
+      mesh.geometry.attributes.skinWeight.needsUpdate = true;
+      mesh.geometry.attributes.skinIndex.needsUpdate = true;
+      refreshWeightColorsForMesh(mesh);
+      totalTouched += touched;
+    }
+  }
+
+  if (totalTouched > 0) {
+    updateInfo(`💧 Smooth : ${totalTouched} vertices lissés sur "${state.selectedBone.name}".`);
+  } else {
+    updateInfo("Aucun vertex à lisser pour ce bone.");
+  }
+}
+
 function findBoneIndexAcrossMeshes(bone) {
   for (const m of state.skinnedMeshes) {
     const idx = m.skeleton.bones.indexOf(bone);

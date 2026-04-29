@@ -26,9 +26,63 @@ export function exportToGLB() {
 
   updateInfo('Export GLB en cours…');
 
+  // ----- Préparation de l'état d'export : pause anim + bind pose + retrait des color attributes -----
+
+  // 1. Mettre l'animation en pause — sinon mixer.update() écrase les rotations
+  //    bind appliquées juste après (visible si parse() touche au mesh de manière async).
+  const animSnap = {
+    wasPaused: state.activeAction ? state.activeAction.paused : null,
+    mixerScale: state.mixer ? state.mixer.timeScale : 1,
+    mixerFbxScale: state.mixerFbx ? state.mixerFbx.timeScale : 1,
+  };
+  if (state.activeAction) state.activeAction.paused = true;
+  if (state.mixer) state.mixer.timeScale = 0;
+  if (state.mixerFbx) state.mixerFbx.timeScale = 0;
+
+  // 2. Sauvegarder la pose courante et appliquer la bind pose à tous les bones
+  const savedRotations = new Map();
+  state.bones.forEach((b) => {
+    savedRotations.set(b.uuid, b.rotation.clone());
+    const bind = state.originalBoneRotations.get(b.uuid);
+    if (bind) b.rotation.copy(bind);
+  });
+  state.currentModel.updateMatrixWorld(true);
+
+  // 3. Retirer les attributs `color` (créés par le weight paint pour la heatmap)
+  //    de toutes les geometries — on les remettra après l'export.
+  const removedColorAttrs = new Map();
+  state.currentModel.traverse((child) => {
+    if (child.isMesh && child.geometry?.attributes?.color) {
+      removedColorAttrs.set(child, child.geometry.attributes.color);
+      child.geometry.deleteAttribute('color');
+    }
+  });
+
+  const restoreState = () => {
+    // Rotations
+    state.bones.forEach((b) => {
+      const r = savedRotations.get(b.uuid);
+      if (r) b.rotation.copy(r);
+    });
+    state.currentModel.updateMatrixWorld(true);
+    // Color attrs
+    for (const [mesh, attr] of removedColorAttrs) {
+      mesh.geometry.setAttribute('color', attr);
+    }
+    // Animation
+    if (state.activeAction && animSnap.wasPaused !== null) {
+      state.activeAction.paused = animSnap.wasPaused;
+    }
+    if (state.mixer) state.mixer.timeScale = animSnap.mixerScale;
+    if (state.mixerFbx) state.mixerFbx.timeScale = animSnap.mixerFbxScale;
+  };
+
   exporter.parse(
     state.currentModel,
     async (result) => {
+      // Restaurer immédiatement la pose et les vertex colors — le binary est déjà figé.
+      restoreState();
+
       const blob = new Blob([result], { type: 'model/gltf-binary' });
       const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
       const defaultName = `model-${ts}.glb`;
@@ -72,12 +126,14 @@ export function exportToGLB() {
       updateInfo(`Modèle exporté : ${a.download}`);
     },
     (error) => {
+      restoreState();
       console.error('[GLB export] erreur:', error);
       updateInfo("Erreur lors de l'export GLB — voir la console.");
     },
     {
       binary: true,
-      animations: state.principalAnimations || [],
+      // Pas d'animations : l'export est destiné à servir de nouvelle bind pose.
+      animations: [],
     },
   );
 }

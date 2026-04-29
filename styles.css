@@ -109,6 +109,16 @@ body {
     margin-top: 4px;
 }
 
+#smooth-weights-btn {
+    background: #4a6a9a;
+    width: 100%;
+    margin-top: 4px;
+}
+
+#smooth-weights-btn:hover {
+    background: #5a7aaa;
+}
+
 #toggle-rest-pose-btn:hover {
     background: #5a9a7a;
 }
