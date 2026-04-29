@@ -48,6 +48,7 @@ export function loadPrincipal(url, filename) {
   });
   state.paintMaterials.clear();
   state.originalMaterials.clear();
+  state.vertexGroups.clear();
 
   // Reset état joint edit
   state.originalBoneInverses.clear();

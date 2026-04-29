@@ -70,6 +70,7 @@ export const state = {
   brushSubtract: false,
   isPainting: false,
   cachedWorldPositions: new Map(),    // mesh.uuid -> Float32Array
+  vertexGroups: new Map(),            // mesh.uuid -> { vertexToGroup: Int32Array, groups: number[][] }
   weightPaintShowShading: true,       // ombrage view-space actif par défaut (cohérent avec le checked HTML)
 
   // Joint edit

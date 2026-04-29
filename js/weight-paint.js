@@ -11,6 +11,63 @@ import { toggleRestPose } from './animation.js';
 
 // ---------- Vertex colors ----------
 
+// ---------- Indexation des vertices par position (groupes de jumeaux) ----------
+// Un vertex peut être dupliqué dans le buffer (UV seams, normal splits…). On les
+// regroupe par position 3D pour qu'ils soient traités comme UN SEUL vertex en
+// weight paint : peindre l'un d'eux applique les mêmes weights à tous ses jumeaux.
+
+function buildVertexGroups(geometry) {
+  const posAttr = geometry.attributes.position;
+  const count = posAttr.count;
+  const positionToGroup = new Map();
+  const vertexToGroup = new Int32Array(count);
+  const groups = [];
+
+  for (let i = 0; i < count; i++) {
+    // Clé : position 3D arrondie à 5 décimales (gère les imprécisions float)
+    const key = `${posAttr.getX(i).toFixed(5)}|${posAttr.getY(i).toFixed(5)}|${posAttr.getZ(i).toFixed(5)}`;
+    let groupId = positionToGroup.get(key);
+    if (groupId === undefined) {
+      groupId = groups.length;
+      positionToGroup.set(key, groupId);
+      groups.push([]);
+    }
+    groups[groupId].push(i);
+    vertexToGroup[i] = groupId;
+  }
+  return { vertexToGroup, groups };
+}
+
+function ensureVertexGroups(mesh) {
+  if (!state.vertexGroups.has(mesh.uuid)) {
+    state.vertexGroups.set(mesh.uuid, buildVertexGroups(mesh.geometry));
+  }
+  return state.vertexGroups.get(mesh.uuid);
+}
+
+// Propage les 4 slots (skinIndex/skinWeight) du vertex source à tous ses jumeaux
+// (vertices avec la même position 3D).
+function propagateToVertexGroup(mesh, vertexIdx) {
+  const groups = state.vertexGroups.get(mesh.uuid);
+  if (!groups) return;
+  const groupId = groups.vertexToGroup[vertexIdx];
+  const group = groups.groups[groupId];
+  if (group.length <= 1) return;
+  const W = mesh.geometry.attributes.skinWeight;
+  const I = mesh.geometry.attributes.skinIndex;
+  const wArr = W.array;
+  const iArr = I.array;
+  const srcBase = vertexIdx * 4;
+  for (const otherIdx of group) {
+    if (otherIdx === vertexIdx) continue;
+    const dstBase = otherIdx * 4;
+    for (let k = 0; k < 4; k++) {
+      iArr[dstBase + k] = iArr[srcBase + k];
+      wArr[dstBase + k] = wArr[srcBase + k];
+    }
+  }
+}
+
 function ensureColorAttribute(geometry) {
   const posCount = geometry.attributes.position.count;
   let color = geometry.attributes.color;
@@ -308,6 +365,7 @@ export function enterWeightPaintMode() {
     }
     inflateBoundingForRaycast(mesh);
     rebuildWorldPositionCache(mesh);
+    ensureVertexGroups(mesh);
   });
 
   swapToPaintMaterials();
@@ -448,135 +506,156 @@ function applyWeightDelta(mesh, vertexIdx, boneIdx, delta) {
     // Pas d'autres bones → on remet le slot courant à 1 pour garder sum = 1
     wArr[base + slot] = 1;
   }
+
+  // Propage aux vertices jumeaux (même position 3D, splits UV/normales)
+  propagateToVertexGroup(mesh, vertexIdx);
 }
 
 // ---------- Smooth weights (lisse les poids du bone sélectionné) ----------
 
-// Construit l'adjacence de chaque vertex (indices des vertices connectés par une arête).
-function buildVertexAdjacency(geometry) {
-  const posCount = geometry.attributes.position.count;
-  const adj = new Array(posCount);
-  for (let i = 0; i < posCount; i++) adj[i] = new Set();
-  const indexAttr = geometry.index;
-  if (!indexAttr) return adj;
-  const triCount = (indexAttr.count / 3) | 0;
-  for (let t = 0; t < triCount; t++) {
-    const a = indexAttr.getX(t * 3);
-    const b = indexAttr.getX(t * 3 + 1);
-    const c = indexAttr.getX(t * 3 + 2);
-    adj[a].add(b); adj[a].add(c);
-    adj[b].add(a); adj[b].add(c);
-    adj[c].add(a); adj[c].add(b);
+// Adjacence par GROUPE de vertices (pas par vertex individuel) — respecte les
+// jumeaux UV/normales : deux vertices à la même position 3D sont logiquement un.
+function ensureGroupAdjacency(mesh) {
+  const vg = ensureVertexGroups(mesh);
+  if (vg.groupAdjacency) return vg.groupAdjacency;
+
+  const indexAttr = mesh.geometry.index;
+  const adj = new Map();
+  for (let g = 0; g < vg.groups.length; g++) adj.set(g, new Set());
+
+  if (indexAttr) {
+    const triCount = (indexAttr.count / 3) | 0;
+    for (let t = 0; t < triCount; t++) {
+      const a = indexAttr.getX(t * 3);
+      const b = indexAttr.getX(t * 3 + 1);
+      const c = indexAttr.getX(t * 3 + 2);
+      const ga = vg.vertexToGroup[a];
+      const gb = vg.vertexToGroup[b];
+      const gc = vg.vertexToGroup[c];
+      if (ga !== gb) { adj.get(ga).add(gb); adj.get(gb).add(ga); }
+      if (ga !== gc) { adj.get(ga).add(gc); adj.get(gc).add(ga); }
+      if (gb !== gc) { adj.get(gb).add(gc); adj.get(gc).add(gb); }
+    }
   }
+  vg.groupAdjacency = adj;
   return adj;
 }
 
-// Lisse les poids du bone (moyenne avec voisins). Réutilise applyWeightDelta pour
-// garantir que la somme des 4 slots reste à 1.0 par vertex.
+// Lisse les poids du bone par groupe — applyWeightDelta sur le premier vertex
+// du groupe propage automatiquement aux jumeaux (cf. propagateToVertexGroup).
 function smoothBoneWeightsOnMesh(mesh, boneIdx) {
   const geom = mesh.geometry;
   const skinIndex = geom.attributes.skinIndex;
   const skinWeight = geom.attributes.skinWeight;
   if (!skinIndex || !skinWeight) return 0;
 
-  const vertexCount = geom.attributes.position.count;
-  const adj = buildVertexAdjacency(geom);
+  const vg = ensureVertexGroups(mesh);
+  const groupAdj = ensureGroupAdjacency(mesh);
+  const groupCount = vg.groups.length;
 
-  // Poids actuels du bone (somme sur les 4 slots) pour chaque vertex
-  const current = new Float32Array(vertexCount);
-  for (let i = 0; i < vertexCount; i++) {
+  // Poids actuel du bone par groupe (lu sur le 1er vertex du groupe)
+  const current = new Float32Array(groupCount);
+  for (let g = 0; g < groupCount; g++) {
+    const vi = vg.groups[g][0];
     let w = 0;
     for (let k = 0; k < 4; k++) {
-      if (skinIndex.getComponent(i, k) === boneIdx) {
-        w += skinWeight.getComponent(i, k);
+      if (skinIndex.getComponent(vi, k) === boneIdx) {
+        w += skinWeight.getComponent(vi, k);
       }
     }
-    current[i] = w;
+    current[g] = w;
   }
 
-  // Moyenne avec les voisins
-  const target = new Float32Array(vertexCount);
-  for (let i = 0; i < vertexCount; i++) {
-    let sum = current[i];
+  // Moyenne avec les groupes voisins
+  const target = new Float32Array(groupCount);
+  for (let g = 0; g < groupCount; g++) {
+    let sum = current[g];
     let count = 1;
-    for (const n of adj[i]) { sum += current[n]; count++; }
-    target[i] = sum / count;
+    const neighbors = groupAdj.get(g);
+    if (neighbors) for (const n of neighbors) { sum += current[n]; count++; }
+    target[g] = sum / count;
   }
 
-  // Application via applyWeightDelta (gère la normalisation à 1.0)
   let touched = 0;
-  for (let i = 0; i < vertexCount; i++) {
-    const delta = target[i] - current[i];
+  for (let g = 0; g < groupCount; g++) {
+    const delta = target[g] - current[g];
     if (Math.abs(delta) < 1e-6) continue;
-    applyWeightDelta(mesh, i, boneIdx, delta);
+    applyWeightDelta(mesh, vg.groups[g][0], boneIdx, delta);
     touched++;
   }
   return touched;
 }
 
-// Smooth global : moyenne chaque bone avec ses voisins, puis garde les 4 plus
-// gros poids par vertex et re-normalise à 1.0. Plus correct qu'itérer
-// smoothBoneWeightsOnMesh sur chaque bone (qui re-normalise en cascade).
+// Smooth global par groupe : moyenne chaque bone avec ses voisins (au niveau
+// des groupes de jumeaux), garde les 4 plus gros poids par groupe, et écrit
+// le résultat dans tous les vertices du groupe.
 function smoothAllWeightsOnMesh(mesh) {
   const geom = mesh.geometry;
   const skinIndex = geom.attributes.skinIndex;
   const skinWeight = geom.attributes.skinWeight;
   if (!skinIndex || !skinWeight) return 0;
 
-  const vertexCount = geom.attributes.position.count;
   const boneCount = mesh.skeleton.bones.length;
-  const adj = buildVertexAdjacency(geom);
+  const vg = ensureVertexGroups(mesh);
+  const groupAdj = ensureGroupAdjacency(mesh);
+  const groupCount = vg.groups.length;
 
-  // 1. Lire les weights par vertex sous forme de Map<boneIdx, totalWeight>
-  const current = new Array(vertexCount);
-  for (let i = 0; i < vertexCount; i++) {
+  // 1. Weights par groupe (lu sur le 1er vertex du groupe)
+  const current = new Array(groupCount);
+  for (let g = 0; g < groupCount; g++) {
+    const vi = vg.groups[g][0];
     const map = new Map();
     for (let k = 0; k < 4; k++) {
-      const bi = skinIndex.getComponent(i, k);
-      const w = skinWeight.getComponent(i, k);
+      const bi = skinIndex.getComponent(vi, k);
+      const w = skinWeight.getComponent(vi, k);
       if (w > 0 && bi >= 0 && bi < boneCount) {
         map.set(bi, (map.get(bi) || 0) + w);
       }
     }
-    current[i] = map;
+    current[g] = map;
   }
 
-  // 2. Smooth : pour chaque vertex, somme avec voisins puis divise
   const wArr = skinWeight.array;
   const iArr = skinIndex.array;
 
-  for (let i = 0; i < vertexCount; i++) {
+  for (let g = 0; g < groupCount; g++) {
+    // Moyenne avec les groupes voisins
     const accum = new Map();
-    for (const [bi, w] of current[i]) accum.set(bi, w);
+    for (const [bi, w] of current[g]) accum.set(bi, w);
     let count = 1;
-    for (const n of adj[i]) {
-      for (const [bi, w] of current[n]) {
-        accum.set(bi, (accum.get(bi) || 0) + w);
+    const neighbors = groupAdj.get(g);
+    if (neighbors) {
+      for (const n of neighbors) {
+        for (const [bi, w] of current[n]) {
+          accum.set(bi, (accum.get(bi) || 0) + w);
+        }
+        count++;
       }
-      count++;
     }
-    // Normalise par le nombre de contributeurs
     for (const bi of accum.keys()) accum.set(bi, accum.get(bi) / count);
 
-    // 3. Garde les 4 plus gros, puis renormalise somme = 1
+    // Garde top-4 + renormalise somme = 1
     const sorted = [...accum.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
     let sum = 0;
     for (const [, w] of sorted) sum += w;
     if (sum < 1e-6) continue;
     const scale = 1 / sum;
 
-    const base = i * 4;
-    for (let k = 0; k < 4; k++) {
-      if (k < sorted.length) {
-        iArr[base + k] = sorted[k][0];
-        wArr[base + k] = sorted[k][1] * scale;
-      } else {
-        iArr[base + k] = 0;
-        wArr[base + k] = 0;
+    // Écrit le résultat sur TOUS les vertices du groupe
+    for (const vi of vg.groups[g]) {
+      const base = vi * 4;
+      for (let k = 0; k < 4; k++) {
+        if (k < sorted.length) {
+          iArr[base + k] = sorted[k][0];
+          wArr[base + k] = sorted[k][1] * scale;
+        } else {
+          iArr[base + k] = 0;
+          wArr[base + k] = 0;
+        }
       }
     }
   }
-  return vertexCount;
+  return groupCount;
 }
 
 export function smoothAllWeights() {
@@ -691,6 +770,10 @@ export function paintAtPointer(event) {
   const minY = hitPoint.y - state.brushRadius, maxY = hitPoint.y + state.brushRadius;
   const minZ = hitPoint.z - state.brushRadius, maxZ = hitPoint.z + state.brushRadius;
 
+  // Cache de groupes pour ne traiter chaque jumeau qu'une seule fois par stroke
+  const vgroups = state.vertexGroups.get(mesh.uuid);
+  const treatedGroups = new Set();
+
   let touched = 0;
   for (let i = 0; i < vertexCount; i++) {
     const i3 = i * 3;
@@ -705,10 +788,15 @@ export function paintAtPointer(event) {
     const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 > r2) continue;
 
+    // Skip les jumeaux du même groupe : applyWeightDelta propagera lui-même
+    if (vgroups) {
+      const gid = vgroups.vertexToGroup[i];
+      if (treatedGroups.has(gid)) continue;
+      treatedGroups.add(gid);
+    }
+
     const dist = Math.sqrt(d2);
     const t = 1 - (dist / state.brushRadius);
-    // Falloff configurable : exposant 0 = brush dur uniforme, 1 = linéaire,
-    // 2 = quadratique (défaut), >2 = très smooth aux bords.
     const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
     const delta = sign * stepStrength * falloff;
     if (delta === 0) continue;
