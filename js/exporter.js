@@ -3,6 +3,7 @@
 // (=> bind pose modifiée par le mode Joints), skinIndex/skinWeight
 // (=> modifs de weight paint), animations originales.
 
+import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { state } from './state.js';
 import { updateInfo } from './ui.js';
@@ -39,14 +40,38 @@ export function exportToGLB() {
   if (state.mixer) state.mixer.timeScale = 0;
   if (state.mixerFbx) state.mixerFbx.timeScale = 0;
 
-  // 2. Sauvegarder la pose courante et appliquer la bind pose à tous les bones
+  // 2. Sauvegarder la pose courante (quaternion par bone) et appliquer la bind pose
   const savedRotations = new Map();
+  const currentPoseQuat = new Map();
   state.bones.forEach((b) => {
     savedRotations.set(b.uuid, b.rotation.clone());
+    currentPoseQuat.set(b.uuid, b.quaternion.clone());
     const bind = state.originalBoneRotations.get(b.uuid);
     if (bind) b.rotation.copy(bind);
   });
   state.currentModel.updateMatrixWorld(true);
+
+  // 2b. Construire un AnimationClip "Current Pose" si la pose actuelle diffère
+  //     de la bind pose pour au moins un bone. Sera réimporté au prochain load
+  //     comme une animation jouable depuis le panneau d'animations.
+  const poseTracks = [];
+  state.bones.forEach((b) => {
+    const cur = currentPoseQuat.get(b.uuid);
+    if (!cur) return;
+    // Après l'application de la bind pose, b.quaternion = bind quaternion
+    const angleDiff = cur.angleTo(b.quaternion);
+    if (angleDiff < 1e-4) return; // pas de diff perceptible
+
+    // 2 keyframes identiques pour avoir un clip jouable (durée 1s)
+    poseTracks.push(new THREE.QuaternionKeyframeTrack(
+      `${b.name}.quaternion`,
+      [0, 1],
+      [cur.x, cur.y, cur.z, cur.w, cur.x, cur.y, cur.z, cur.w],
+    ));
+  });
+  const poseClip = poseTracks.length > 0
+    ? new THREE.AnimationClip('Current Pose', 1, poseTracks)
+    : null;
 
   // 3. Retirer les attributs `color` (créés par le weight paint pour la heatmap)
   //    de toutes les geometries — on les remettra après l'export.
@@ -132,8 +157,9 @@ export function exportToGLB() {
     },
     {
       binary: true,
-      // Pas d'animations : l'export est destiné à servir de nouvelle bind pose.
-      animations: [],
+      // On exporte uniquement le clip "Current Pose" si la pose diffère de la bind.
+      // Au prochain chargement du GLB, il apparaîtra dans la liste des animations.
+      animations: poseClip ? [poseClip] : [],
     },
   );
 }
