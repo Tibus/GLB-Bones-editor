@@ -513,6 +513,122 @@ function applyWeightDelta(mesh, vertexIdx, boneIdx, delta) {
 
 // ---------- Smooth weights (lisse les poids du bone sélectionné) ----------
 
+// Adjacence géodésique par groupe : pour chaque arête du mesh on stocke la
+// distance euclidienne entre les deux groupes connectés. Sert à calculer la
+// distance géodésique (le long de la surface) depuis un point cliqué.
+function ensureGeodesicAdjacency(mesh) {
+  const vg = ensureVertexGroups(mesh);
+  if (vg.geodesicAdj) return vg;
+
+  const indexAttr = mesh.geometry.index;
+  const groupCount = vg.groups.length;
+
+  // Position monde par groupe (utilise le cache du raycast skinné si dispo)
+  const cachedPos = state.cachedWorldPositions.get(mesh.uuid);
+  const posAttr = mesh.geometry.attributes.position;
+  const groupPositions = new Float32Array(groupCount * 3);
+  for (let g = 0; g < groupCount; g++) {
+    const vi = vg.groups[g][0];
+    if (cachedPos) {
+      groupPositions[g * 3]     = cachedPos[vi * 3];
+      groupPositions[g * 3 + 1] = cachedPos[vi * 3 + 1];
+      groupPositions[g * 3 + 2] = cachedPos[vi * 3 + 2];
+    } else {
+      groupPositions[g * 3]     = posAttr.getX(vi);
+      groupPositions[g * 3 + 1] = posAttr.getY(vi);
+      groupPositions[g * 3 + 2] = posAttr.getZ(vi);
+    }
+  }
+
+  const adj = new Array(groupCount);
+  for (let g = 0; g < groupCount; g++) adj[g] = [];
+
+  const addEdge = (g1, g2) => {
+    if (g1 === g2) return;
+    // Évite doublons (chaque arête peut apparaître dans 2 triangles)
+    for (const e of adj[g1]) if (e.neighbor === g2) return;
+    const dx = groupPositions[g1 * 3]     - groupPositions[g2 * 3];
+    const dy = groupPositions[g1 * 3 + 1] - groupPositions[g2 * 3 + 1];
+    const dz = groupPositions[g1 * 3 + 2] - groupPositions[g2 * 3 + 2];
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    adj[g1].push({ neighbor: g2, dist: d });
+    adj[g2].push({ neighbor: g1, dist: d });
+  };
+
+  if (indexAttr) {
+    const triCount = (indexAttr.count / 3) | 0;
+    for (let t = 0; t < triCount; t++) {
+      const a = indexAttr.getX(t * 3);
+      const b = indexAttr.getX(t * 3 + 1);
+      const c = indexAttr.getX(t * 3 + 2);
+      const ga = vg.vertexToGroup[a];
+      const gb = vg.vertexToGroup[b];
+      const gc = vg.vertexToGroup[c];
+      addEdge(ga, gb);
+      addEdge(ga, gc);
+      addEdge(gb, gc);
+    }
+  }
+
+  vg.geodesicAdj = adj;
+  vg.groupPositions = groupPositions;
+  return vg;
+}
+
+// Trouve le groupe dont la position est la plus proche du point monde cliqué.
+function findNearestGroupTo(mesh, point) {
+  const vg = ensureGeodesicAdjacency(mesh);
+  const gp = vg.groupPositions;
+  let bestG = -1;
+  let bestD2 = Infinity;
+  for (let g = 0; g < vg.groups.length; g++) {
+    const dx = gp[g * 3]     - point.x;
+    const dy = gp[g * 3 + 1] - point.y;
+    const dz = gp[g * 3 + 2] - point.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < bestD2) { bestD2 = d2; bestG = g; }
+  }
+  return { groupId: bestG, dist: Math.sqrt(bestD2) };
+}
+
+// Dijkstra depuis un groupe initial, s'arrête dès qu'on dépasse maxDist.
+// Retourne un Float32Array de distances (Infinity = non atteint).
+function dijkstraFromGroup(mesh, startGroupId, startDist, maxDist) {
+  const vg = ensureGeodesicAdjacency(mesh);
+  const adj = vg.geodesicAdj;
+  const n = vg.groups.length;
+  const distances = new Float32Array(n);
+  distances.fill(Infinity);
+  distances[startGroupId] = startDist;
+
+  // PQ array linéaire — suffisant pour des radii modestes
+  const pq = [[startDist, startGroupId]];
+  const visited = new Uint8Array(n);
+
+  while (pq.length > 0) {
+    let minIdx = 0;
+    for (let i = 1; i < pq.length; i++) {
+      if (pq[i][0] < pq[minIdx][0]) minIdx = i;
+    }
+    const [d, g] = pq[minIdx];
+    pq[minIdx] = pq[pq.length - 1];
+    pq.pop();
+
+    if (visited[g]) continue;
+    visited[g] = 1;
+    if (d > maxDist) continue;
+
+    for (const { neighbor, dist } of adj[g]) {
+      const newD = d + dist;
+      if (newD < distances[neighbor] && newD <= maxDist) {
+        distances[neighbor] = newD;
+        pq.push([newD, neighbor]);
+      }
+    }
+  }
+  return distances;
+}
+
 // Adjacence par GROUPE de vertices (pas par vertex individuel) — respecte les
 // jumeaux UV/normales : deux vertices à la même position 3D sont logiquement un.
 function ensureGroupAdjacency(mesh) {
@@ -755,59 +871,43 @@ export function paintAtPointer(event) {
   }
 
   const hitPoint = hit.point;
-  const r2 = state.brushRadius * state.brushRadius;
   const sign = state.brushSubtract ? -1 : 1;
   const stepStrength = state.brushStrength * 0.25;
 
-  const geom = mesh.geometry;
-  const vertexCount = geom.attributes.position.count;
-  const cache = state.cachedWorldPositions.get(mesh.uuid);
-  if (!cache) {
-    updateInfo('⚠️ Cache positions introuvable.');
+  // Calcul de la distance géodésique : Dijkstra le long des arêtes du mesh
+  // depuis le groupe le plus proche du hit point. Évite que le brush "saute"
+  // d'un membre à l'autre quand ils sont proches en espace.
+  const vg = ensureGeodesicAdjacency(mesh);
+  const { groupId: startGroup, dist: startDist } = findNearestGroupTo(mesh, hitPoint);
+  if (startGroup < 0) {
+    updateInfo('⚠️ Pas d\'adjacence géodésique.');
     return;
   }
-  const minX = hitPoint.x - state.brushRadius, maxX = hitPoint.x + state.brushRadius;
-  const minY = hitPoint.y - state.brushRadius, maxY = hitPoint.y + state.brushRadius;
-  const minZ = hitPoint.z - state.brushRadius, maxZ = hitPoint.z + state.brushRadius;
+  if (startDist > state.brushRadius) {
+    // Le hit point est hors de portée du vertex le plus proche
+    return;
+  }
 
-  // Cache de groupes pour ne traiter chaque jumeau qu'une seule fois par stroke
-  const vgroups = state.vertexGroups.get(mesh.uuid);
-  const treatedGroups = new Set();
+  const distances = dijkstraFromGroup(mesh, startGroup, startDist, state.brushRadius);
 
   let touched = 0;
-  for (let i = 0; i < vertexCount; i++) {
-    const i3 = i * 3;
-    const wx = cache[i3], wy = cache[i3 + 1], wz = cache[i3 + 2];
-    if (wx < minX || wx > maxX) continue;
-    if (wy < minY || wy > maxY) continue;
-    if (wz < minZ || wz > maxZ) continue;
+  for (let g = 0; g < vg.groups.length; g++) {
+    const dist = distances[g];
+    if (!isFinite(dist) || dist > state.brushRadius) continue;
 
-    const dx = wx - hitPoint.x;
-    const dy = wy - hitPoint.y;
-    const dz = wz - hitPoint.z;
-    const d2 = dx * dx + dy * dy + dz * dz;
-    if (d2 > r2) continue;
-
-    // Skip les jumeaux du même groupe : applyWeightDelta propagera lui-même
-    if (vgroups) {
-      const gid = vgroups.vertexToGroup[i];
-      if (treatedGroups.has(gid)) continue;
-      treatedGroups.add(gid);
-    }
-
-    const dist = Math.sqrt(d2);
     const t = 1 - (dist / state.brushRadius);
     const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
     const delta = sign * stepStrength * falloff;
     if (delta === 0) continue;
 
-    applyWeightDelta(mesh, i, boneIdx, delta);
+    // applyWeightDelta sur le 1er vertex du groupe propage aux jumeaux
+    applyWeightDelta(mesh, vg.groups[g][0], boneIdx, delta);
     touched++;
   }
 
   if (touched > 0) {
-    geom.attributes.skinWeight.needsUpdate = true;
-    geom.attributes.skinIndex.needsUpdate = true;
+    mesh.geometry.attributes.skinWeight.needsUpdate = true;
+    mesh.geometry.attributes.skinIndex.needsUpdate = true;
     refreshWeightColorsForMesh(mesh);
     updateInfo(`🎨 ${state.selectedBone.name} : ${touched} vertices peints (${state.brushSubtract ? '−' : '+'}).`);
   } else {

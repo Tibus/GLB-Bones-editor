@@ -12,7 +12,9 @@ import { pushUndo } from './history.js';
 function createBoneMarker(bone, index, isSelected = false) {
   const isTwist = isTwistBone(bone);
   // Multi-sélectionné mais pas le primary : highlight orange (intermédiaire)
-  const isMultiSelected = !isSelected && state.multiSelectedBones.has(bone);
+  const isMultiSelected = !isSelected
+    && state.multiSelectedBones
+    && state.multiSelectedBones.has(bone);
   const size = (isSelected || isMultiSelected) ? 0.045 : (isTwist ? 0.02 : 0.03);
 
   let color;
