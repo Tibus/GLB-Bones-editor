@@ -193,6 +193,14 @@ function manageCurrentModelAfterLoad() {
   }
 
   state.hipsOriginalPosition = state.bonesByName.get('Hip')?.getWorldPosition(new THREE.Vector3());
+  state.hipsOriginalLocalPosition = state.bonesByName.get('Hip')?.position.clone();
+
+  // Hauteur world du modèle (max des 3 axes — gère les rigs Y-up et Z-up)
+  {
+    const bbox = new THREE.Box3().setFromObject(state.currentModel);
+    const size = bbox.getSize(new THREE.Vector3());
+    state.glbHeight = Math.max(size.x, size.y, size.z);
+  }
 
   if (skinnedMesh && skinnedMesh.skeleton) {
     state.skeletonHelper = new THREE.SkeletonHelper(state.currentModel);
@@ -283,6 +291,13 @@ export function loadFBXAnimation(url, filename) {
 
       state.scene.add(fbx);
 
+      // Hauteur world du FBX (max des 3 axes) pour le ratio de translation Hip
+      {
+        const bbox = new THREE.Box3().setFromObject(fbx);
+        const fbxSize = bbox.getSize(new THREE.Vector3());
+        state.fbxHeight = Math.max(fbxSize.x, fbxSize.y, fbxSize.z);
+      }
+
       state.skeletonHelperFbx = new THREE.SkeletonHelper(fbx);
       state.skeletonHelperFbx.material.linewidth = 2;
       state.skeletonHelperFbx.material.color.setHex(0xffaa00);
@@ -309,6 +324,7 @@ export function loadFBXAnimation(url, filename) {
 
       fbx.updateWorldMatrix(true, true);
       state.fbxHipsOriginalPosition = state.fbxBonesByName.get('Hips')?.getWorldPosition(new THREE.Vector3());
+      state.fbxHipsOriginalLocalPosition = state.fbxBonesByName.get('Hips')?.position.clone();
 
       if (state.fbxAnimations.length > 0) {
         updateAnimationsList();

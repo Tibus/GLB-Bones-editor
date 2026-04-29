@@ -6,6 +6,7 @@ import { animate, togglePlayPause, toggleSkeleton, toggleRestPose } from './anim
 import {
   selectBone, deselectBone, onCanvasClick,
   updateBoneRotation, resetBoneRotation, updateRotationUI,
+  attachBoneSchemaListeners,
 } from './bones.js';
 import { updateInfo } from './ui.js';
 import { loadPrincipal, loadFBXAnimation } from './loader.js';
@@ -14,6 +15,7 @@ import {
   updateBrushHelper, paintAtPointer,
   smoothSelectedBoneWeights, smoothAllWeights,
   setPaintShading,
+  selectVerticesInScreenRect, clearVertexSelection, applyWeightToSelection,
 } from './weight-paint.js';
 import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
@@ -35,6 +37,27 @@ state.transformControls.addEventListener('change', () => {
 state.transformControls.addEventListener('mouseDown', () => {
   if (state.selectedBone) pushUndo();
 });
+
+// Toggle Liste / Schéma de bones
+{
+  const listBtn = document.getElementById('bone-list-btn');
+  const schemaBtn = document.getElementById('bone-schema-btn');
+  const listDiv = document.getElementById('bone-list');
+  const schemaDiv = document.getElementById('bone-schema');
+  listBtn.addEventListener('click', () => {
+    listBtn.classList.add('active');
+    schemaBtn.classList.remove('active');
+    listDiv.style.display = '';
+    schemaDiv.style.display = 'none';
+  });
+  schemaBtn.addEventListener('click', () => {
+    schemaBtn.classList.add('active');
+    listBtn.classList.remove('active');
+    listDiv.style.display = 'none';
+    schemaDiv.style.display = '';
+  });
+  attachBoneSchemaListeners();
+}
 
 // File inputs
 document.getElementById('modele-input').addEventListener('change', (e) => {
@@ -87,9 +110,91 @@ document.getElementById('smooth-all-btn').addEventListener('click', () => {
   smoothAllWeights();
 });
 
-document.getElementById('paint-shading').addEventListener('change', (e) => {
-  setPaintShading(e.target.checked);
+// document.getElementById('paint-shading').addEventListener('change', (e) => {
+//   setPaintShading(e.target.checked);
+// });
+
+document.getElementById('brush-geodesic').addEventListener('change', (e) => {
+  state.brushGeodesic = e.target.checked;
 });
+
+// ----- Toggle Brush / Sélection (modes du panneau weight paint) -----
+const brushControlsDiv = document.getElementById('brush-controls');
+const selectionControlsDiv = document.getElementById('selection-controls');
+const selectionRectDiv = document.getElementById('selection-rect');
+const brushModeBtn = document.getElementById('paint-brush-btn');
+const selectModeBtn = document.getElementById('paint-select-btn');
+
+function setPaintInteractionMode(isSelection) {
+  state.paintSelectionMode = isSelection;
+  brushControlsDiv.style.display = isSelection ? 'none' : '';
+  selectionControlsDiv.style.display = isSelection ? 'flex' : 'none';
+  brushModeBtn.classList.toggle('active', !isSelection);
+  selectModeBtn.classList.toggle('active', isSelection);
+  if (!isSelection) {
+    clearVertexSelection();
+    selectionRectDiv.style.display = 'none';
+  } else {
+    state.brushHelper.visible = false;
+  }
+}
+brushModeBtn.addEventListener('click', () => setPaintInteractionMode(false));
+selectModeBtn.addEventListener('click', () => setPaintInteractionMode(true));
+
+bindBrushSlider('selection-weight', 'selection-weight-num', (v) => { state.selectionWeight = v; });
+
+document.getElementById('apply-selection-weight').addEventListener('click', () => {
+  pushUndo();
+  applyWeightToSelection(state.selectionWeight);
+});
+document.getElementById('clear-selection').addEventListener('click', clearVertexSelection);
+
+// Drag rectangle 2D : capture les pointer events en mode sélection (priorité sur paint)
+let _selStart = null;
+state.renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!state.weightPaintMode || !state.paintSelectionMode || e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+  state.controls.enabled = false;
+  _selStart = { x: e.clientX, y: e.clientY, additive: e.shiftKey };
+  selectionRectDiv.style.left = `${e.clientX}px`;
+  selectionRectDiv.style.top = `${e.clientY}px`;
+  selectionRectDiv.style.width = '0px';
+  selectionRectDiv.style.height = '0px';
+  selectionRectDiv.style.display = 'block';
+  try { state.renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+}, true);
+
+state.renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!_selStart) return;
+  e.stopPropagation();
+  const x1 = Math.min(_selStart.x, e.clientX);
+  const y1 = Math.min(_selStart.y, e.clientY);
+  const x2 = Math.max(_selStart.x, e.clientX);
+  const y2 = Math.max(_selStart.y, e.clientY);
+  selectionRectDiv.style.left = `${x1}px`;
+  selectionRectDiv.style.top = `${y1}px`;
+  selectionRectDiv.style.width = `${x2 - x1}px`;
+  selectionRectDiv.style.height = `${y2 - y1}px`;
+}, true);
+
+function endSelectionDrag(e) {
+  if (!_selStart) return;
+  const x1 = Math.min(_selStart.x, e.clientX);
+  const y1 = Math.min(_selStart.y, e.clientY);
+  const x2 = Math.max(_selStart.x, e.clientX);
+  const y2 = Math.max(_selStart.y, e.clientY);
+  const additive = _selStart.additive;
+  _selStart = null;
+  selectionRectDiv.style.display = 'none';
+  state.controls.enabled = true;
+  try { state.renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+  // Si le rectangle est trop petit (< 3px), c'est un click → ne rien faire
+  if ((x2 - x1) < 3 && (y2 - y1) < 3) return;
+  selectVerticesInScreenRect(x1, y1, x2, y2, additive);
+}
+state.renderer.domElement.addEventListener('pointerup', endSelectionDrag, true);
+state.renderer.domElement.addEventListener('pointercancel', endSelectionDrag, true);
 
 // Toggles IK
 document.getElementById('ik-full-body').addEventListener('change', (e) => {
@@ -101,6 +206,9 @@ document.getElementById('ik-lock-feet').addEventListener('change', (e) => {
 });
 document.getElementById('ik-constraints').addEventListener('change', (e) => {
   state.ikConstraintsEnabled = e.target.checked;
+});
+document.getElementById('ik-auto-balance').addEventListener('change', (e) => {
+  state.ikAutoBalance = e.target.checked;
 });
 
 // Sliders du brush
@@ -129,6 +237,7 @@ const dom = state.renderer.domElement;
 
 dom.addEventListener('pointerdown', (e) => {
   if (!state.weightPaintMode || e.button !== 0) return;
+  if (state.paintSelectionMode) return; // le mode sélection prend la main
 
   const hit = updateBrushHelper(e);
   if (!hit) return; // pas sur le mesh → laisse OrbitControls

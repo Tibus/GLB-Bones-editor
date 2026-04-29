@@ -24,6 +24,13 @@ export const state = {
   fbxHipsOriginalPosition: null,
   fbxAnimations: [],
 
+  // Hauteurs world cachées au load (ratio de translation Hip pour le retargeting FBX)
+  glbHeight: 1,
+  fbxHeight: 1,
+  // Positions LOCALES bind des Hips (pour calculer le delta local du retargeting FBX)
+  hipsOriginalLocalPosition: null,
+  fbxHipsOriginalLocalPosition: null,
+
   // Animation
   mixer: null,
   mixerFbx: null,
@@ -67,6 +74,11 @@ export const state = {
   brushRadius: 0.08,
   brushStrength: 0.5,
   brushFalloff: 2,                    // exposant du falloff : 0 = uniforme, 1 = linéaire, 2+ = smooth aux bords
+  brushGeodesic: true,                // true = distance le long de la surface, false = distance 3D euclidienne
+  // Mode sélection rectangle pour assigner un poids à un set de vertices
+  paintSelectionMode: false,
+  selectedVertexGroups: new Map(),    // mesh.uuid -> Set<groupId>
+  selectionWeight: 1.0,
   brushSubtract: false,
   isPainting: false,
   cachedWorldPositions: new Map(),    // mesh.uuid -> Float32Array
@@ -108,7 +120,9 @@ export const state = {
   isDraggingIK: false,
   ikFullBody: false,             // pré-pass CCD sur les extension bones
   ikConstraintsEnabled: true,    // clamp anatomique (genoux/coudes/colonne)
-  ikLockFeet: false,             // verrouille les pieds au sol pendant un drag
+  ikLockFeet: true,             // verrouille les pieds au sol pendant un drag
+  ikAutoBalance: false,         // ajuste le Pelvis pour que le COM se projette entre les pieds
+  ikAutoBalanceStrength: 0.5,   // fraction du décalage appliqué par frame (smooth)
   ikGroundY: 0,                  // hauteur du sol (en world Y)
   ikFeetSnapshot: null,          // snapshot des positions de pieds pour le lock
   ikGroundPreview: null,         // THREE.Mesh affiché au niveau du sol quand lock feet est on

@@ -95,4 +95,27 @@ export function matchFbxAnimationToPrincipal() {
   if (spine1) { spine1.rotation.x *= -1; spine1.rotation.z *= -1; }
   const spine2 = bonesByName.get("Spine02");
   if (spine2) { spine2.rotation.x *= -1; spine2.rotation.z *= -1; }
+
+  // Reprend la position verticale du Hip depuis l'animation FBX.
+  // - FBX (Mixamo) : axe vertical LOCAL = Y, bind en cm typiquement.
+  // - GLB (ce rig)  : axe vertical LOCAL = Z, bind en m typiquement.
+  // Le ratio = magnitude(bindLocal_GLB) / magnitude(bindLocal_FBX) compense
+  // automatiquement les différences d'units (cm/m) sans tuning manuel.
+  const fbxHips = state.fbxBonesByName.get('Hips');
+  const fbxHipsBindLocal = state.fbxHipsOriginalLocalPosition;
+  const targetHip = bonesByName.get('Hip');
+  const targetHipBindLocal = state.hipsOriginalLocalPosition;
+  if (fbxHips && fbxHipsBindLocal && targetHip && targetHipBindLocal) {
+    const fbxBindMag = fbxHipsBindLocal.length();
+    const ratio = fbxBindMag > 1e-6 ? targetHipBindLocal.length() / fbxBindMag : 1;
+    // Axe vertical FBX = Y (Mixamo), GLB = Z (ce rig). Ajuste si besoin.
+    const deltaVerticalFBX_Y = fbxHips.position.y - fbxHipsBindLocal.y;
+    targetHip.position.z = targetHipBindLocal.z + deltaVerticalFBX_Y * ratio;
+
+    const deltaVerticalFBX_X = fbxHips.position.x - fbxHipsBindLocal.x;
+    targetHip.position.x = targetHipBindLocal.x + deltaVerticalFBX_X * ratio;
+
+    const deltaVerticalFBX_Z = fbxHips.position.z - fbxHipsBindLocal.z;
+    targetHip.position.y = targetHipBindLocal.y - deltaVerticalFBX_Z * ratio;
+  }
 }

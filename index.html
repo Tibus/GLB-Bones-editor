@@ -42,8 +42,98 @@
     <button id="mode-joints-btn" class="mode-btn">🔧 Joints</button>
   </div>
 
+  <div id="bone-view-toggle">
+    <button id="bone-list-btn" class="mode-btn active">📋 Liste</button>
+    <button id="bone-schema-btn" class="mode-btn">🦴 Schéma</button>
+  </div>
+
   <div id="bone-list">
     <div id="no-bones-msg">Aucun modèle chargé</div>
+  </div>
+
+  <div id="bone-schema" style="display:none;">
+    <svg viewBox="0 0 100 200" xmlns="http://www.w3.org/2000/svg">
+      <g class="schema-bones">
+        <line x1="50" y1="14" x2="50" y2="28"/>
+        <line x1="50" y1="28" x2="50" y2="45"/>
+        <line x1="50" y1="45" x2="50" y2="62"/>
+        <line x1="50" y1="62" x2="50" y2="78"/>
+        <line x1="50" y1="78" x2="50" y2="92"/>
+        <!-- Bras droit (côté gauche écran) — Upperarm collé à la Clavicule, plus écarté -->
+        <line x1="50" y1="45" x2="35" y2="40"/>
+        <line x1="35" y1="40" x2="22" y2="44"/>
+        <line x1="22" y1="44" x2="18" y2="80"/>
+        <line x1="18" y1="80" x2="6" y2="105"/>
+        <!-- Bras gauche (côté droit écran) — Upperarm collé à la Clavicule, plus écarté -->
+        <line x1="50" y1="45" x2="65" y2="40"/>
+        <line x1="65" y1="40" x2="78" y2="44"/>
+        <line x1="78" y1="44" x2="82" y2="80"/>
+        <line x1="82" y1="80" x2="94" y2="105"/>
+        <!-- Jambe droite — un peu plus écartée -->
+        <line x1="50" y1="92" x2="40" y2="100"/>
+        <line x1="40" y1="100" x2="30" y2="135"/>
+        <line x1="30" y1="135" x2="20" y2="170"/>
+        <!-- Jambe gauche -->
+        <line x1="50" y1="92" x2="60" y2="100"/>
+        <line x1="60" y1="100" x2="70" y2="135"/>
+        <line x1="70" y1="135" x2="80" y2="170"/>
+      </g>
+      <!-- Hit areas invisibles et grandes (au dessus pour capturer les clics) -->
+      <g class="schema-hits">
+        <circle class="bone-hit" data-bone="Head" cx="50" cy="12" r="9"/>
+        <circle class="bone-hit" data-bone="NeckTwist01" cx="50" cy="28" r="7"/>
+        <circle class="bone-hit" data-bone="Spine02" cx="50" cy="45" r="7"/>
+        <circle class="bone-hit" data-bone="Spine01" cx="50" cy="62" r="7"/>
+        <circle class="bone-hit" data-bone="Waist" cx="50" cy="78" r="7"/>
+        <circle class="bone-hit" data-bone="Hip" cx="50" cy="92" r="7"/>
+
+        <circle class="bone-hit" data-bone="R_Clavicle" cx="35" cy="40" r="6"/>
+        <circle class="bone-hit" data-bone="R_Upperarm" cx="22" cy="44" r="6"/>
+        <circle class="bone-hit" data-bone="R_Forearm" cx="18" cy="80" r="7"/>
+        <circle class="bone-hit" data-bone="R_Hand" cx="6" cy="105" r="8"/>
+
+        <circle class="bone-hit" data-bone="L_Clavicle" cx="65" cy="40" r="6"/>
+        <circle class="bone-hit" data-bone="L_Upperarm" cx="78" cy="44" r="6"/>
+        <circle class="bone-hit" data-bone="L_Forearm" cx="82" cy="80" r="7"/>
+        <circle class="bone-hit" data-bone="L_Hand" cx="94" cy="105" r="8"/>
+
+        <circle class="bone-hit" data-bone="R_Thigh" cx="40" cy="100" r="7"/>
+        <circle class="bone-hit" data-bone="R_Calf" cx="30" cy="135" r="7"/>
+        <circle class="bone-hit" data-bone="R_Foot" cx="20" cy="170" r="8"/>
+
+        <circle class="bone-hit" data-bone="L_Thigh" cx="60" cy="100" r="7"/>
+        <circle class="bone-hit" data-bone="L_Calf" cx="70" cy="135" r="7"/>
+        <circle class="bone-hit" data-bone="L_Foot" cx="80" cy="170" r="8"/>
+      </g>
+
+      <g class="schema-nodes">
+        <circle class="bone-node" data-bone="Head" cx="50" cy="12" r="7"/>
+        <circle class="bone-node" data-bone="NeckTwist01" cx="50" cy="28" r="2.5"/>
+        <circle class="bone-node" data-bone="Spine02" cx="50" cy="45" r="3"/>
+        <circle class="bone-node" data-bone="Spine01" cx="50" cy="62" r="3"/>
+        <circle class="bone-node" data-bone="Waist" cx="50" cy="78" r="3"/>
+        <circle class="bone-node" data-bone="Hip" cx="50" cy="92" r="4"/>
+
+        <circle class="bone-node" data-bone="R_Clavicle" cx="35" cy="40" r="2.5"/>
+        <circle class="bone-node" data-bone="R_Upperarm" cx="22" cy="44" r="2.5"/>
+        <circle class="bone-node" data-bone="R_Forearm" cx="18" cy="80" r="2.5"/>
+        <circle class="bone-node" data-bone="R_Hand" cx="6" cy="105" r="3.5"/>
+
+        <circle class="bone-node" data-bone="L_Clavicle" cx="65" cy="40" r="2.5"/>
+        <circle class="bone-node" data-bone="L_Upperarm" cx="78" cy="44" r="2.5"/>
+        <circle class="bone-node" data-bone="L_Forearm" cx="82" cy="80" r="2.5"/>
+        <circle class="bone-node" data-bone="L_Hand" cx="94" cy="105" r="3.5"/>
+
+        <circle class="bone-node" data-bone="R_Thigh" cx="40" cy="100" r="2.5"/>
+        <circle class="bone-node" data-bone="R_Calf" cx="30" cy="135" r="2.5"/>
+        <circle class="bone-node" data-bone="R_Foot" cx="20" cy="170" r="3"/>
+
+        <circle class="bone-node" data-bone="L_Thigh" cx="60" cy="100" r="2.5"/>
+        <circle class="bone-node" data-bone="L_Calf" cx="70" cy="135" r="2.5"/>
+        <circle class="bone-node" data-bone="L_Foot" cx="80" cy="170" r="3"/>
+      </g>
+    </svg>
+    <div class="schema-legend">Vu de face — gauche écran = côté droit du personnage</div>
   </div>
 
   <div id="rotation-controls">
@@ -84,47 +174,76 @@
 
   <div id="weight-paint-controls">
     <div id="paint-bone-name">Aucun bone sélectionné</div>
-    <h4>🎨 Brush</h4>
 
-    <div class="brush-control">
-      <label>
-        <span class="brush-label">Rayon</span>
-        <input type="range" id="brush-radius" min="0.01" max="0.5" value="0.08" step="0.01">
-        <input type="number" id="brush-radius-num" min="0.01" max="0.5" value="0.08" step="0.01">
+    <div id="paint-mode-toggle">
+      <button id="paint-brush-btn" class="mode-btn active">🖌 Brush</button>
+      <button id="paint-select-btn" class="mode-btn">⬛ Sélection</button>
+    </div>
+
+    <div id="brush-controls">
+      <h4>🎨 Brush</h4>
+
+      <div class="brush-control">
+        <label>
+          <span class="brush-label">Rayon</span>
+          <input type="range" id="brush-radius" min="0.01" max="0.5" value="0.08" step="0.01">
+          <input type="number" id="brush-radius-num" min="0.01" max="0.5" value="0.08" step="0.01">
+        </label>
+      </div>
+
+      <div class="brush-control">
+        <label>
+          <span class="brush-label">Force</span>
+          <input type="range" id="brush-strength" min="0" max="1" value="0.5" step="0.05">
+          <input type="number" id="brush-strength-num" min="0" max="1" value="0.5" step="0.05">
+        </label>
+      </div>
+
+      <div class="brush-control">
+        <label>
+          <span class="brush-label">Atténuation</span>
+          <input type="range" id="brush-falloff" min="0" max="5" value="2" step="0.1">
+          <input type="number" id="brush-falloff-num" min="0" max="5" value="2" step="0.1">
+        </label>
+      </div>
+
+      <div id="weight-legend">
+        <span>0.0</span>
+        <div class="gradient"></div>
+        <span>1.0</span>
+      </div>
+
+      <div id="paint-hint">
+        <strong>Clic gauche</strong> = ajout de poids — <strong>Shift+clic</strong> = retrait<br>
+        Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
+      </div>
+
+      <label class="paint-toggle">
+        <input type="checkbox" id="brush-geodesic" checked>
+        <span>Brush géodésique (distance sur la surface)</span>
       </label>
     </div>
 
-    <div class="brush-control">
-      <label>
-        <span class="brush-label">Force</span>
-        <input type="range" id="brush-strength" min="0" max="1" value="0.5" step="0.05">
-        <input type="number" id="brush-strength-num" min="0" max="1" value="0.5" step="0.05">
-      </label>
+    <div id="selection-controls" style="display:none;">
+      <h4>⬛ Sélection</h4>
+      <div class="brush-control">
+        <label>
+          <span class="brush-label">Poids</span>
+          <input type="range" id="selection-weight" min="0" max="1" value="1" step="0.05">
+          <input type="number" id="selection-weight-num" min="0" max="1" value="1" step="0.05">
+        </label>
+      </div>
+      <button id="apply-selection-weight" class="control-btn">✅ Appliquer aux sélectionnés</button>
+      <button id="clear-selection" class="control-btn">✖ Désélectionner tout</button>
+      <div id="selection-hint">
+        Drag pour sélectionner un rectangle de vertices. <strong>Shift+drag</strong> = ajouter.
+      </div>
     </div>
 
-    <div class="brush-control">
-      <label>
-        <span class="brush-label">Atténuation</span>
-        <input type="range" id="brush-falloff" min="0" max="5" value="2" step="0.1">
-        <input type="number" id="brush-falloff-num" min="0" max="5" value="2" step="0.1">
-      </label>
-    </div>
-
-    <div id="weight-legend">
-      <span>0.0</span>
-      <div class="gradient"></div>
-      <span>1.0</span>
-    </div>
-
-    <div id="paint-hint">
-      <strong>Clic gauche</strong> = ajout de poids — <strong>Shift+clic</strong> = retrait<br>
-      Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
-    </div>
-
-    <label class="paint-toggle">
-      <input type="checkbox" id="paint-shading" checked>
-      <span>Afficher les ombres du modèle</span>
-    </label>
+<!--    <label class="paint-toggle">-->
+<!--      <input type="checkbox" id="paint-shading" checked>-->
+<!--      <span>Afficher les ombres du modèle</span>-->
+<!--    </label>-->
 
     <button id="smooth-weights-btn" class="control-btn">💧 Smooth Weights</button>
     <button id="smooth-all-btn" class="control-btn">💧 Smooth All</button>
@@ -168,6 +287,11 @@
       <input type="checkbox" id="ik-constraints" checked>
       <span><strong>Anatomic constraints</strong> — limite genoux, coudes, colonne</span>
     </label>
+
+    <label class="ik-toggle">
+      <input type="checkbox" id="ik-auto-balance">
+      <span><strong>Auto balance</strong> — ajuste le pelvis pour garder le centre de masse au-dessus des pieds</span>
+    </label>
   </div>
 
   <div id="skeleton-legend">
@@ -195,6 +319,8 @@
   <div class="spinner"></div>
   <p>Chargement...</p>
 </div>
+
+<div id="selection-rect"></div>
 
 <script type="importmap">
   {

@@ -223,6 +223,72 @@ body {
     margin-bottom: 15px;
 }
 
+#bone-view-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+#bone-schema {
+    background: #1a1a2e;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 15px;
+    user-select: none;
+}
+
+#bone-schema svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    max-height: 360px;
+    margin: 0 auto;
+}
+
+.schema-bones line {
+    stroke: #4a4a6a;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+}
+
+.schema-hits .bone-hit {
+    fill: transparent;
+    cursor: pointer;
+}
+
+.schema-nodes .bone-node {
+    fill: #4a9aff;
+    stroke: #1a1a2e;
+    stroke-width: 1;
+    cursor: pointer;
+    pointer-events: none; /* hit area gère les clics, le visuel ne fait que s'afficher */
+    transition: fill 0.15s, r 0.15s;
+}
+
+.schema-hits .bone-hit:hover + .bone-node,
+.schema-nodes .bone-node:hover {
+    fill: #6abaff;
+}
+
+.schema-nodes .bone-node.selected {
+    fill: #ffff00;
+    stroke: #aa8a00;
+}
+
+.schema-nodes .bone-node.multi-selected {
+    fill: #ff8800;
+    stroke: #aa5500;
+}
+
+.schema-legend {
+    margin-top: 6px;
+    font-size: 10px;
+    color: #888;
+    text-align: center;
+    font-style: italic;
+}
+
 .bone-item {
     padding: 6px 12px;
     cursor: pointer;
@@ -615,6 +681,61 @@ body {
     flex-shrink: 0;
 }
 
+#selection-rect {
+    display: none;
+    position: fixed;
+    border: 1px dashed #ffff00;
+    background: rgba(255, 255, 0, 0.12);
+    pointer-events: none;
+    z-index: 200;
+}
+
+#paint-mode-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+#selection-hint {
+    padding: 8px 10px;
+    background: #3a3a2a;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+#selection-hint strong {
+    color: #ffff00;
+}
+
+#selection-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: #2a2a3a;
+    border-radius: 6px;
+}
+
+#apply-selection-weight {
+    background: #2a8a4a;
+    width: 100%;
+}
+
+#apply-selection-weight:hover {
+    background: #3a9a5a;
+}
+
+#clear-selection {
+    background: #6a4a3a;
+    width: 100%;
+}
+
+#clear-selection:hover {
+    background: #8a5a4a;
+}
+
 #paint-hint strong {
     color: #ff8aff;
 }
@@ -744,3 +865,4 @@ body {
 .ik-toggle strong {
     color: #ff8800;
 }
+

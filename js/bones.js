@@ -82,6 +82,35 @@ export function updateSelectedBoneMarker() {
   createAllBoneMarkers();
 }
 
+// ---------- Schéma SVG du squelette (vue de face) ----------
+
+// Met à jour la classe `selected` / `multi-selected` sur chaque node SVG.
+export function updateBoneSchemaHighlight() {
+  const nodes = document.querySelectorAll('#bone-schema .bone-node');
+  nodes.forEach((node) => {
+    const boneName = node.dataset.bone;
+    const bone = state.bonesByName.get(boneName);
+    const isPrimary = bone && bone === state.selectedBone;
+    const isMulti = bone && state.multiSelectedBones.has(bone) && !isPrimary;
+    node.classList.toggle('selected', !!isPrimary);
+    node.classList.toggle('multi-selected', !!isMulti);
+  });
+}
+
+// Branche un seul listener via délégation : tout élément avec data-bone est cliquable.
+// Permet d'avoir des hit areas invisibles plus larges que les nodes visibles.
+export function attachBoneSchemaListeners() {
+  const schema = document.getElementById('bone-schema');
+  if (!schema) return;
+  schema.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-bone]');
+    if (!target) return;
+    const boneName = target.dataset.bone;
+    const idx = state.bones.findIndex((b) => b.name === boneName);
+    if (idx >= 0) selectBone(idx, e.shiftKey);
+  });
+}
+
 // ---------- Liste hiérarchique ----------
 
 export function updateBoneList() {
@@ -195,6 +224,7 @@ export function selectBone(index, additive = false) {
     const boneAtItem = state.bones[parseInt(item.dataset.index)];
     item.classList.toggle('selected', state.multiSelectedBones.has(boneAtItem));
   });
+  updateBoneSchemaHighlight();
 
   const selectedItem = document.querySelector(`.bone-item[data-index="${state.selectedBoneIndex}"]`);
   if (selectedItem) selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -238,6 +268,7 @@ export function deselectBone() {
 
   document.querySelectorAll('.bone-item').forEach(item => item.classList.remove('selected'));
   document.getElementById('rotation-controls').classList.remove('visible');
+  updateBoneSchemaHighlight();
 
   state.transformControls.detach();
   updateSelectedBoneMarker();

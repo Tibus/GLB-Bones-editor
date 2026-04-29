@@ -193,7 +193,16 @@ export function refreshWeightColorsForMesh(mesh) {
     boneIdx = mesh.skeleton.bones.indexOf(state.selectedBone);
   }
 
+  // Vertex sélectionnés (mode sélection rectangle) → highlight jaune
+  const selected = state.selectedVertexGroups.get(mesh.uuid);
+  const vg = state.vertexGroups.get(mesh.uuid);
+
   for (let i = 0; i < vertexCount; i++) {
+    if (selected && vg && selected.has(vg.vertexToGroup[i])) {
+      // Jaune vif pour les vertex sélectionnés
+      color.setXYZ(i, 1, 1, 0);
+      continue;
+    }
     let w = 0;
     if (boneIdx >= 0) {
       for (let k = 0; k < 4; k++) {
@@ -794,6 +803,94 @@ export function smoothAllWeights() {
   updateInfo(`💧 Smooth All : ${totalTouched} vertices lissés sur tous les bones.`);
 }
 
+// ---------- Mode sélection rectangle ----------
+
+const _selProj = new THREE.Vector3();
+
+// Sélectionne tous les groupes dont la projection écran tombe dans le rectangle.
+export function selectVerticesInScreenRect(x1, y1, x2, y2, additive = false) {
+  const camera = state.camera;
+  const dom = state.renderer.domElement;
+  const rect = dom.getBoundingClientRect();
+
+  for (const mesh of state.skinnedMeshes) {
+    const vg = ensureVertexGroups(mesh);
+    let selected = state.selectedVertexGroups.get(mesh.uuid);
+    if (!selected) {
+      selected = new Set();
+      state.selectedVertexGroups.set(mesh.uuid, selected);
+    }
+    if (!additive) selected.clear();
+
+    const cachedPos = state.cachedWorldPositions.get(mesh.uuid);
+    const posAttr = mesh.geometry.attributes.position;
+
+    for (let g = 0; g < vg.groups.length; g++) {
+      const vi = vg.groups[g][0];
+      if (cachedPos) {
+        _selProj.set(cachedPos[vi * 3], cachedPos[vi * 3 + 1], cachedPos[vi * 3 + 2]);
+      } else {
+        _selProj.set(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
+        _selProj.applyMatrix4(mesh.matrixWorld);
+      }
+      // Projection NDC puis écran
+      _selProj.project(camera);
+      // Si le point est derrière la caméra (z < -1 ou > 1 en NDC), on skip
+      if (_selProj.z < -1 || _selProj.z > 1) continue;
+      const sx = (_selProj.x + 1) * 0.5 * rect.width + rect.left;
+      const sy = (-_selProj.y + 1) * 0.5 * rect.height + rect.top;
+      if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+        selected.add(g);
+      }
+    }
+    refreshWeightColorsForMesh(mesh);
+  }
+}
+
+export function clearVertexSelection() {
+  state.selectedVertexGroups.clear();
+  refreshWeightColors();
+}
+
+// Set le poids du bone sélectionné à `targetWeight` pour tous les vertices sélectionnés.
+// Utilise applyWeightDelta pour préserver la normalisation (somme = 1).
+export function applyWeightToSelection(targetWeight) {
+  if (!state.selectedBone) {
+    updateInfo("Sélectionne un bone d'abord.");
+    return;
+  }
+  const w = Math.max(0, Math.min(1, targetWeight));
+  let totalTouched = 0;
+  for (const mesh of state.skinnedMeshes) {
+    const boneIdx = mesh.skeleton.bones.indexOf(state.selectedBone);
+    if (boneIdx < 0) continue;
+    const selected = state.selectedVertexGroups.get(mesh.uuid);
+    if (!selected || selected.size === 0) continue;
+    const vg = state.vertexGroups.get(mesh.uuid);
+    if (!vg) continue;
+
+    const W = mesh.geometry.attributes.skinWeight;
+    const I = mesh.geometry.attributes.skinIndex;
+
+    for (const g of selected) {
+      const vi = vg.groups[g][0];
+      // Lit le poids actuel du bone sur ce vertex (somme des slots)
+      let current = 0;
+      for (let k = 0; k < 4; k++) {
+        if (I.getComponent(vi, k) === boneIdx) current += W.getComponent(vi, k);
+      }
+      const delta = w - current;
+      if (Math.abs(delta) < 1e-6) continue;
+      applyWeightDelta(mesh, vi, boneIdx, delta);
+      totalTouched++;
+    }
+    W.needsUpdate = true;
+    I.needsUpdate = true;
+    refreshWeightColorsForMesh(mesh);
+  }
+  updateInfo(`✅ Poids ${w.toFixed(2)} appliqué sur ${totalTouched} vertices (${state.selectedBone.name}).`);
+}
+
 export function smoothSelectedBoneWeights() {
   if (!state.weightPaintMode) {
     updateInfo('Smooth disponible uniquement en mode Weight Paint.');
@@ -874,35 +971,55 @@ export function paintAtPointer(event) {
   const sign = state.brushSubtract ? -1 : 1;
   const stepStrength = state.brushStrength * 0.25;
 
-  // Calcul de la distance géodésique : Dijkstra le long des arêtes du mesh
-  // depuis le groupe le plus proche du hit point. Évite que le brush "saute"
-  // d'un membre à l'autre quand ils sont proches en espace.
+  // Adjacence + positions des groupes (utilisées par les deux modes)
   const vg = ensureGeodesicAdjacency(mesh);
-  const { groupId: startGroup, dist: startDist } = findNearestGroupTo(mesh, hitPoint);
-  if (startGroup < 0) {
-    updateInfo('⚠️ Pas d\'adjacence géodésique.');
-    return;
-  }
-  if (startDist > state.brushRadius) {
-    // Le hit point est hors de portée du vertex le plus proche
-    return;
-  }
-
-  const distances = dijkstraFromGroup(mesh, startGroup, startDist, state.brushRadius);
+  const gp = vg.groupPositions;
 
   let touched = 0;
-  for (let g = 0; g < vg.groups.length; g++) {
-    const dist = distances[g];
-    if (!isFinite(dist) || dist > state.brushRadius) continue;
 
-    const t = 1 - (dist / state.brushRadius);
-    const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
-    const delta = sign * stepStrength * falloff;
-    if (delta === 0) continue;
+  if (state.brushGeodesic) {
+    // Mode géodésique : Dijkstra le long des arêtes depuis le groupe le plus
+    // proche du hit point. Évite que le brush "saute" d'un membre à l'autre.
+    const { groupId: startGroup, dist: startDist } = findNearestGroupTo(mesh, hitPoint);
+    if (startGroup < 0) {
+      updateInfo('⚠️ Pas d\'adjacence géodésique.');
+      return;
+    }
+    if (startDist > state.brushRadius) return;
 
-    // applyWeightDelta sur le 1er vertex du groupe propage aux jumeaux
-    applyWeightDelta(mesh, vg.groups[g][0], boneIdx, delta);
-    touched++;
+    const distances = dijkstraFromGroup(mesh, startGroup, startDist, state.brushRadius);
+
+    for (let g = 0; g < vg.groups.length; g++) {
+      const dist = distances[g];
+      if (!isFinite(dist) || dist > state.brushRadius) continue;
+
+      const t = 1 - (dist / state.brushRadius);
+      const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
+      const delta = sign * stepStrength * falloff;
+      if (delta === 0) continue;
+
+      applyWeightDelta(mesh, vg.groups[g][0], boneIdx, delta);
+      touched++;
+    }
+  } else {
+    // Mode euclidien : distance 3D directe groupe → hitPoint (mode antérieur).
+    const r2 = state.brushRadius * state.brushRadius;
+    for (let g = 0; g < vg.groups.length; g++) {
+      const dx = gp[g * 3]     - hitPoint.x;
+      const dy = gp[g * 3 + 1] - hitPoint.y;
+      const dz = gp[g * 3 + 2] - hitPoint.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > r2) continue;
+
+      const dist = Math.sqrt(d2);
+      const t = 1 - (dist / state.brushRadius);
+      const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
+      const delta = sign * stepStrength * falloff;
+      if (delta === 0) continue;
+
+      applyWeightDelta(mesh, vg.groups[g][0], boneIdx, delta);
+      touched++;
+    }
   }
 
   if (touched > 0) {

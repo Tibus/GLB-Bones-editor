@@ -816,6 +816,109 @@ export function exitIKMode() {
   }
 }
 
+// ---------- Auto balance dynamique ----------
+// Approxime le centre de masse du squelette via une somme pondérée des positions
+// monde de bones clés (poids inspirés de la répartition anatomique humaine).
+// Décale le Pelvis horizontalement pour que la projection au sol du COM tombe
+// au-dessus du segment entre les deux pieds (base de support).
+
+const _COM_WEIGHTS = {
+  "Hip":         0.20,
+  "Waist":       0.10,
+  "Spine01":     0.10,
+  "Spine02":     0.15,
+  "NeckTwist01": 0.04,
+  "Head":        0.08,
+  "L_Upperarm":  0.025,
+  "L_Forearm":   0.020,
+  "L_Hand":      0.010,
+  "R_Upperarm":  0.025,
+  "R_Forearm":   0.020,
+  "R_Hand":      0.010,
+  "L_Thigh":     0.10,
+  "L_Calf":      0.05,
+  "L_Foot":      0.015,
+  "R_Thigh":     0.10,
+  "R_Calf":      0.05,
+  "R_Foot":      0.015,
+};
+
+const _comTmp = new THREE.Vector3();
+const _comAccum = new THREE.Vector3();
+const _supportL = new THREE.Vector3();
+const _supportR = new THREE.Vector3();
+const _balanceOffset = new THREE.Vector3();
+
+function computeCenterOfMass(out) {
+  out.set(0, 0, 0);
+  let totalW = 0;
+  for (const [name, w] of Object.entries(_COM_WEIGHTS)) {
+    const bone = state.bonesByName.get(name);
+    if (!bone) continue;
+    bone.updateMatrixWorld(true);
+    bone.getWorldPosition(_comTmp);
+    out.addScaledVector(_comTmp, w);
+    totalW += w;
+  }
+  if (totalW > 0) out.divideScalar(totalW);
+  return out;
+}
+
+// Trouve le point sur le segment [A, B] le plus proche de P (en X/Z, ignore Y).
+// Renvoie le scaled barycentric in [0, 1] et écrit le point dans `out`.
+function projectOnSegmentXZ(A, B, P, out) {
+  const ax = A.x, az = A.z;
+  const bx = B.x, bz = B.z;
+  const dx = bx - ax, dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-8) {
+    out.set(ax, A.y, az);
+    return 0;
+  }
+  let t = ((P.x - ax) * dx + (P.z - az) * dz) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  out.set(ax + dx * t, A.y, az + dz * t);
+  return t;
+}
+
+// Ajuste le Pelvis horizontalement pour que le COM se projette dans la base de support.
+// Skipped si la chaîne en cours de drag est le Pelvis (sinon on écrase l'input user).
+function applyAutoBalance(currentChainName) {
+  if (!state.ikAutoBalance) return;
+  if (currentChainName === 'Pelvis') return;
+
+  const hip = state.bonesByName.get('Hip');
+  const lFoot = state.bonesByName.get('L_Foot');
+  const rFoot = state.bonesByName.get('R_Foot');
+  if (!hip || !lFoot || !rFoot) return;
+
+  // Centre de masse + projection au sol
+  computeCenterOfMass(_comAccum);
+  lFoot.getWorldPosition(_supportL);
+  rFoot.getWorldPosition(_supportR);
+
+  // Point cible sur le segment entre les pieds (en X/Z), le plus proche du COM
+  projectOnSegmentXZ(_supportL, _supportR, _comAccum, _comTmp);
+  // _comTmp est maintenant le point cible idéal au sol
+
+  // Décalage horizontal nécessaire (en world)
+  _balanceOffset.x = (_comTmp.x - _comAccum.x) * state.ikAutoBalanceStrength;
+  _balanceOffset.z = (_comTmp.z - _comAccum.z) * state.ikAutoBalanceStrength;
+
+  // Conversion world → local pour le Pelvis
+  const parent = hip.parent;
+  if (parent) {
+    parent.updateMatrixWorld(true);
+    const parentScale = parent.scale.x || 1;
+    hip.position.x += _balanceOffset.x / parentScale;
+    hip.position.z += _balanceOffset.z / parentScale;
+  } else {
+    hip.position.x += _balanceOffset.x;
+    hip.position.z += _balanceOffset.z;
+  }
+  hip.updateMatrixWorld(true);
+}
+
 // ---------- Lock feet to ground ----------
 // Capture la position monde courante de chaque pied (en clampant Y au sol)
 // pour pouvoir les y maintenir pendant un drag d'une autre cible.
@@ -992,7 +1095,11 @@ export function attachIKDragListeners() {
       }
     }
 
+    // Auto-balance : ajuste le pelvis pour ramener le COM au-dessus des pieds
+    applyAutoBalance(chainName);
+
     // Lock feet : re-solve les chaînes de jambes pour garder les pieds à leur snapshot
+    // (utile aussi pour rattraper le déplacement du pelvis fait par auto-balance).
     if (state.ikLockFeet && state.ikFeetSnapshot) {
       restoreFeetToSnapshot(state.ikFeetSnapshot);
     }
