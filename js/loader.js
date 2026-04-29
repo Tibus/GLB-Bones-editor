@@ -39,9 +39,12 @@ export function loadPrincipal(url, filename) {
 
   // Reset état weight paint
   state.skinnedMeshes.length = 0;
-  state.paintMaterials.forEach((mat) => {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
+  state.paintMaterials.forEach((cache) => {
+    // cache = { basic?, lambert? } depuis le refactor du shading toggle
+    if (cache && typeof cache === 'object') {
+      if (cache.basic) cache.basic.dispose();
+      if (cache.lambert) cache.lambert.dispose();
+    }
   });
   state.paintMaterials.clear();
   state.originalMaterials.clear();

@@ -93,6 +93,14 @@ function snapshotJointDrag(bone) {
   followSet.add(bone);
   for (const linked of getLinkedBones(bone)) followSet.add(linked);
 
+  // Multi-sélection : tous les bones secondaires sélectionnés suivent le drag
+  // (et leurs propres linkedJoints/twists aussi).
+  for (const extra of state.multiSelectedBones) {
+    if (extra === bone) continue;
+    followSet.add(extra);
+    for (const linked of getLinkedBones(extra)) followSet.add(linked);
+  }
+
   for (const X of followSet) X.updateMatrixWorld(true);
 
   for (const X of followSet) {
@@ -323,39 +331,47 @@ function clearJointRotationSnapshot() {
   snap.childMatrixWorld.clear();
 }
 
-// Branche les listeners du gizmo TransformControls pour la rotation en mode joints.
+// Branche les listeners du gizmo TransformControls pour le mode joints :
+// - rotation pour les bones rotatables (mains/pieds)
+// - translation pour les autres
 // À appeler une fois au démarrage.
 export function attachJointRotationListeners() {
   const tc = state.transformControls;
 
   tc.addEventListener('mouseDown', () => {
-    if (!state.jointEditMode) return;
-    if (!isBoneRotatableInJointMode(state.selectedBone)) return;
-    snapshotJointRotation(state.selectedBone);
+    if (!state.jointEditMode || !state.selectedBone) return;
+    // pushUndo() est déjà fait par le listener générique dans main.js.
+    if (isBoneRotatableInJointMode(state.selectedBone)) {
+      snapshotJointRotation(state.selectedBone);
+    } else {
+      snapshotJointDrag(state.selectedBone);
+    }
   });
 
   tc.addEventListener('change', () => {
     if (!state.jointEditMode) return;
-    if (!state.jointRotateSnapshot.bone) return;
-    applyJointRotationCompensation();
+    if (state.jointRotateSnapshot.bone) {
+      applyJointRotationCompensation();
+    } else if (state.jointDragSnapshot.bone) {
+      applyJointDragCompensation();
+    }
   });
 
   tc.addEventListener('mouseUp', () => {
     if (!state.jointEditMode) return;
-    const snap = state.jointRotateSnapshot;
-    if (snap.bone) {
-      // Persiste la nouvelle rotation comme nouvelle bind pose pour ce bone :
-      // - originalBoneRotations : utilisé à la prochaine entrée du mode joints
-      //   (rotation reset à la nouvelle bind ⇒ S = identité ⇒ vertex cohérents).
-      // - savedRotationsForJointEdit : utilisé à la sortie du mode courant
-      //   (la pose visible reste la nouvelle bind, l'animation reprend ensuite).
-      const newRot = snap.bone.rotation.clone();
-      state.originalBoneRotations.set(snap.bone.uuid, newRot);
+    const rotSnap = state.jointRotateSnapshot;
+    if (rotSnap.bone) {
+      // Persiste la nouvelle rotation comme nouvelle bind pose
+      const newRot = rotSnap.bone.rotation.clone();
+      state.originalBoneRotations.set(rotSnap.bone.uuid, newRot);
       if (state.savedRotationsForJointEdit) {
-        state.savedRotationsForJointEdit.set(snap.bone.uuid, newRot.clone());
+        state.savedRotationsForJointEdit.set(rotSnap.bone.uuid, newRot.clone());
       }
+      clearJointRotationSnapshot();
     }
-    clearJointRotationSnapshot();
+    if (state.jointDragSnapshot.bone) {
+      clearJointDragSnapshot();
+    }
   });
 }
 
@@ -381,10 +397,17 @@ export function enterJointEditMode() {
   if (state.mixer) state.mixer.timeScale = 0;
   if (state.mixerFbx) state.mixerFbx.timeScale = 0;
 
-  // En mode joints : pas de gizmo SAUF pour les bones rotatables (mains/pieds)
-  if (isBoneRotatableInJointMode(state.selectedBone)) {
-    state.transformControls.setMode('rotate');
-    state.transformControls.setSpace('local');
+  // En mode joints, on attache toujours le gizmo :
+  // - rotation pour les bones rotatables (mains/pieds)
+  // - translation pour les autres
+  if (state.selectedBone) {
+    if (isBoneRotatableInJointMode(state.selectedBone)) {
+      state.transformControls.setMode('rotate');
+      state.transformControls.setSpace('local');
+    } else {
+      state.transformControls.setMode('translate');
+      state.transformControls.setSpace('world');
+    }
     attachGizmoTo(state.selectedBone);
   } else {
     state.transformControls.detach();
@@ -424,6 +447,8 @@ export function exitJointEditMode() {
 
   if (state.selectedBone) {
     document.getElementById('rotation-controls').classList.add('visible');
+    state.transformControls.setMode('rotate');
+    state.transformControls.setSpace('local');
     attachGizmoTo(state.selectedBone);
   } else {
     state.transformControls.detach();
@@ -481,14 +506,14 @@ export function attachJointDragListeners(selectBone) {
     if (stack.length === 0) return;
     const marker = pickNextInStack(stack);
 
-    selectBone(marker.userData.boneIndex);
+    selectBone(marker.userData.boneIndex, e.shiftKey);
     if (!state.selectedBone) return;
 
-    // Le drag de translation démarre dès qu'on clique sur le marker (la sphère),
-    // même pour les bones rotatables : ainsi mains/pieds restent translatables.
-    // Pour ROTATER ces bones, l'utilisateur clique directement sur les anneaux
-    // RGB du gizmo (qui ne sont pas dans state.boneMarkers, donc mon raycast
-    // les ignore — TransformControls reçoit alors le pointerdown).
+    // Drag direct du marker : SEULEMENT pour les bones rotatables (mains/pieds).
+    // Eux ont le gizmo de rotation attaché, donc le drag direct est leur seul
+    // moyen de translater. Pour les autres bones, c'est le gizmo de translation
+    // qui prend en charge le déplacement.
+    if (!isBoneRotatableInJointMode(state.selectedBone)) return;
 
     pushUndo();
     snapshotJointDrag(state.selectedBone);

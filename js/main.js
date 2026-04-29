@@ -12,7 +12,8 @@ import { loadPrincipal, loadFBXAnimation } from './loader.js';
 import {
   enterWeightPaintMode, exitWeightPaintMode,
   updateBrushHelper, paintAtPointer,
-  smoothSelectedBoneWeights,
+  smoothSelectedBoneWeights, smoothAllWeights,
+  setPaintShading,
 } from './weight-paint.js';
 import {
   enterJointEditMode, exitJointEditMode, resetAllJoints,
@@ -81,6 +82,15 @@ document.getElementById('smooth-weights-btn').addEventListener('click', () => {
   smoothSelectedBoneWeights();
 });
 
+document.getElementById('smooth-all-btn').addEventListener('click', () => {
+  if (state.weightPaintMode) pushUndo();
+  smoothAllWeights();
+});
+
+document.getElementById('paint-shading').addEventListener('change', (e) => {
+  setPaintShading(e.target.checked);
+});
+
 // Toggles IK
 document.getElementById('ik-full-body').addEventListener('change', (e) => {
   state.ikFullBody = e.target.checked;
@@ -112,6 +122,7 @@ function bindBrushSlider(rangeId, numId, setter) {
 }
 bindBrushSlider('brush-radius', 'brush-radius-num', (v) => { state.brushRadius = v; });
 bindBrushSlider('brush-strength', 'brush-strength-num', (v) => { state.brushStrength = v; });
+bindBrushSlider('brush-falloff', 'brush-falloff-num', (v) => { state.brushFalloff = v; });
 
 // ---------- Pointer events weight paint (capture phase) ----------
 const dom = state.renderer.domElement;

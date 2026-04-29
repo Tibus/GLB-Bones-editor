@@ -11,10 +11,13 @@ import { pushUndo } from './history.js';
 
 function createBoneMarker(bone, index, isSelected = false) {
   const isTwist = isTwistBone(bone);
-  const size = isSelected ? 0.045 : (isTwist ? 0.02 : 0.03);
+  // Multi-sélectionné mais pas le primary : highlight orange (intermédiaire)
+  const isMultiSelected = !isSelected && state.multiSelectedBones.has(bone);
+  const size = (isSelected || isMultiSelected) ? 0.045 : (isTwist ? 0.02 : 0.03);
 
   let color;
   if (isSelected) color = 0xffff00;
+  else if (isMultiSelected) color = 0xff8800;
   else if (isTwist) color = 0x666666;
   else color = 0x4a9aff;
 
@@ -23,7 +26,7 @@ function createBoneMarker(bone, index, isSelected = false) {
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: isSelected ? 1.0 : (isTwist ? 0.4 : 0.8),
+      opacity: (isSelected || isMultiSelected) ? 1.0 : (isTwist ? 0.4 : 0.8),
       depthTest: false,
     }),
   );
@@ -120,7 +123,7 @@ export function updateBoneList() {
     item.appendChild(nameSpan);
 
     item.dataset.index = String(index);
-    item.addEventListener('click', () => selectBone(index));
+    item.addEventListener('click', (e) => selectBone(index, e.shiftKey));
     listContainer.appendChild(item);
 
     bone.children.forEach(child => {
@@ -133,34 +136,69 @@ export function updateBoneList() {
 
 // ---------- Gizmo helper ----------
 // Configure les axes visibles du gizmo en fonction du bone :
-// les twist bones ne montrent que l'axe Y (rotation autour de leur axe principal).
+// les twist bones ne montrent que l'axe Y EN ROTATION (rotation autour de leur axe
+// principal seulement). En translation, on garde les 3 axes pour pouvoir bouger
+// librement le pivot d'un twist.
 export function attachGizmoTo(bone) {
   if (!bone) {
     state.transformControls.detach();
     return;
   }
   const isTwist = isTwistBone(bone);
-  state.transformControls.showX = !isTwist;
+  const isRotateMode = state.transformControls.mode === 'rotate';
+  const restrictToY = isTwist && isRotateMode;
+  state.transformControls.showX = !restrictToY;
   state.transformControls.showY = true;
-  state.transformControls.showZ = !isTwist;
+  state.transformControls.showZ = !restrictToY;
   state.transformControls.attach(bone);
 }
 
 // ---------- Sélection ----------
 
-export function selectBone(index) {
-  state.selectedBone = state.bones[index];
-  state.selectedBoneIndex = index;
+export function selectBone(index, additive = false) {
+  const bone = state.bones[index];
+  if (!bone) return;
+
+  if (additive) {
+    if (state.multiSelectedBones.has(bone)) {
+      // Toggle off : retire de la multi-sélection
+      state.multiSelectedBones.delete(bone);
+      if (state.selectedBone === bone) {
+        const remaining = [...state.multiSelectedBones];
+        if (remaining.length > 0) {
+          state.selectedBone = remaining[remaining.length - 1];
+          state.selectedBoneIndex = state.bones.indexOf(state.selectedBone);
+        } else {
+          state.selectedBone = null;
+          state.selectedBoneIndex = -1;
+          state.transformControls.detach();
+          updateSelectedBoneMarker();
+          return;
+        }
+      }
+    } else {
+      state.multiSelectedBones.add(bone);
+      state.selectedBone = bone;
+      state.selectedBoneIndex = index;
+    }
+  } else {
+    // Sélection simple : remplace toute la sélection
+    state.multiSelectedBones.clear();
+    state.multiSelectedBones.add(bone);
+    state.selectedBone = bone;
+    state.selectedBoneIndex = index;
+  }
 
   document.querySelectorAll('.bone-item').forEach((item) => {
-    item.classList.toggle('selected', parseInt(item.dataset.index) === index);
+    const boneAtItem = state.bones[parseInt(item.dataset.index)];
+    item.classList.toggle('selected', state.multiSelectedBones.has(boneAtItem));
   });
 
-  const selectedItem = document.querySelector(`.bone-item[data-index="${index}"]`);
+  const selectedItem = document.querySelector(`.bone-item[data-index="${state.selectedBoneIndex}"]`);
   if (selectedItem) selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   document.getElementById('selected-bone-name').textContent =
-    state.selectedBone.name || `Bone ${index + 1}`;
+    state.selectedBone.name || `Bone ${state.selectedBoneIndex + 1}`;
 
   updateRotationUI();
   updateSelectedBoneMarker();
@@ -173,15 +211,20 @@ export function selectBone(index) {
   } else if (state.jointEditMode) {
     document.getElementById('rotation-controls').classList.remove('visible');
     if (isBoneRotatableInJointMode(state.selectedBone)) {
+      // Mains/pieds : gizmo de rotation + drag direct du marker pour translation
       state.transformControls.setMode('rotate');
       state.transformControls.setSpace('local');
-      attachGizmoTo(state.selectedBone);
     } else {
-      state.transformControls.detach();
+      // Autres bones : gizmo de translation (drag direct désactivé)
+      state.transformControls.setMode('translate');
+      state.transformControls.setSpace('world');
     }
+    attachGizmoTo(state.selectedBone);
     updateJointBoneName();
   } else {
     document.getElementById('rotation-controls').classList.add('visible');
+    state.transformControls.setMode('rotate');
+    state.transformControls.setSpace('local');
     attachGizmoTo(state.selectedBone);
   }
 }
@@ -189,6 +232,7 @@ export function selectBone(index) {
 export function deselectBone() {
   state.selectedBone = null;
   state.selectedBoneIndex = -1;
+  state.multiSelectedBones.clear();
 
   document.querySelectorAll('.bone-item').forEach(item => item.classList.remove('selected'));
   document.getElementById('rotation-controls').classList.remove('visible');
@@ -245,6 +289,10 @@ export function resetBoneRotation() {
 
 export function onCanvasClick(event) {
   if (event.target !== state.renderer.domElement) return;
+  // En mode joints, la sélection est déjà faite par le pointerdown du joint-edit ;
+  // déclencher onCanvasClick ferait un second appel à selectBone qui cyclerait
+  // sur les bones empilés (effet "double action" indésirable au release).
+  if (state.jointEditMode) return;
 
   const rect = state.renderer.domElement.getBoundingClientRect();
   state.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -258,7 +306,7 @@ export function onCanvasClick(event) {
   const candidates = pickStackedBones(intersects);
   if (candidates.length === 0) return;
 
-  selectBone(pickNextInStack(candidates).userData.boneIndex);
+  selectBone(pickNextInStack(candidates).userData.boneIndex, event.shiftKey);
 }
 
 // Filtre les markers proches dans le stack du clic (à <2x du rayon du marker le plus proche)

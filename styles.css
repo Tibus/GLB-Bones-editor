@@ -109,14 +109,24 @@ body {
     margin-top: 4px;
 }
 
-#smooth-weights-btn {
+#smooth-weights-btn,
+#smooth-all-btn {
     background: #4a6a9a;
     width: 100%;
     margin-top: 4px;
 }
 
-#smooth-weights-btn:hover {
+#smooth-weights-btn:hover,
+#smooth-all-btn:hover {
     background: #5a7aaa;
+}
+
+#smooth-all-btn {
+    background: #6a4a9a;
+}
+
+#smooth-all-btn:hover {
+    background: #7a5aaa;
 }
 
 #toggle-rest-pose-btn:hover {
@@ -586,6 +596,23 @@ body {
     font-size: 11px;
     color: #ccc;
     line-height: 1.4;
+}
+
+.paint-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #2a2a3a;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.paint-toggle input[type="checkbox"] {
+    accent-color: #ff8aff;
+    flex-shrink: 0;
 }
 
 #paint-hint strong {

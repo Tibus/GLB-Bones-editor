@@ -27,18 +27,81 @@ function ensureColorAttribute(geometry) {
   return color;
 }
 
+// ShaderMaterial qui calcule un ombrage indépendant des lumières de la scène :
+// on multiplie la vertex color par |normal_view.z|, ce qui donne plus sombre sur
+// les bords (faces de profil) et plus clair sur les faces frontales — toujours
+// le même résultat quelle que soit l'orientation des lights.
+function makeShadingPaintMaterial() {
+  return new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    defines: { USE_SKINNING: '' },
+    vertexShader: /* glsl */`
+      #include <common>
+      #include <skinning_pars_vertex>
+
+      attribute vec3 color;
+      varying vec3 vColor;
+      varying vec3 vNormalView;
+
+      void main() {
+        vColor = color;
+
+        vec3 objectNormal = vec3(normal);
+        vec3 transformed = vec3(position);
+
+        #include <skinbase_vertex>
+        #include <skinnormal_vertex>
+        #include <skinning_vertex>
+
+        vNormalView = normalize(normalMatrix * objectNormal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      varying vec3 vColor;
+      varying vec3 vNormalView;
+
+      void main() {
+        // Ombrage fixe basé sur l'orientation de la normale par rapport à la caméra.
+        // Plus brillant face caméra (vNormalView.z proche de ±1), plus sombre de profil.
+        float sh = abs(vNormalView.z) * 0.65 + 0.35;
+        gl_FragColor = vec4(vColor * sh, 1.0);
+      }
+    `,
+  });
+}
+
+// Récupère (ou crée) le material de paint pour un mesh, en fonction du flag shading.
+// Cache : Map<mesh.uuid, { basic: MeshBasicMaterial, lambert: ShaderMaterial }>
+function getPaintMaterial(mesh, withShading) {
+  let cache = state.paintMaterials.get(mesh.uuid);
+  if (!cache || cache.basic === undefined) {
+    cache = { basic: null, lambert: null };
+    state.paintMaterials.set(mesh.uuid, cache);
+  }
+  const key = withShading ? 'lambert' : 'basic';
+  if (!cache[key]) {
+    if (withShading) {
+      const geom = mesh.geometry;
+      if (!geom.attributes.normal) geom.computeVertexNormals();
+      cache[key] = makeShadingPaintMaterial();
+    } else {
+      cache[key] = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      });
+    }
+  }
+  return cache[key];
+}
+
 function swapToPaintMaterials() {
   state.skinnedMeshes.forEach((mesh) => {
     if (!state.originalMaterials.has(mesh.uuid)) {
       state.originalMaterials.set(mesh.uuid, mesh.material);
     }
-    let pm = state.paintMaterials.get(mesh.uuid);
-    if (!pm) {
-      pm = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
-      state.paintMaterials.set(mesh.uuid, pm);
-    }
     ensureColorAttribute(mesh.geometry);
-    mesh.material = pm;
+    mesh.material = getPaintMaterial(mesh, state.weightPaintShowShading);
   });
 }
 
@@ -46,6 +109,15 @@ function restoreOriginalMaterials() {
   state.skinnedMeshes.forEach((mesh) => {
     const orig = state.originalMaterials.get(mesh.uuid);
     if (orig) mesh.material = orig;
+  });
+}
+
+// Toggle shading on/off pendant le mode paint : swap chaque material entre cached.
+export function setPaintShading(enabled) {
+  state.weightPaintShowShading = enabled;
+  if (!state.weightPaintMode) return;
+  state.skinnedMeshes.forEach((mesh) => {
+    mesh.material = getPaintMaterial(mesh, enabled);
   });
 }
 
@@ -280,6 +352,8 @@ export function exitWeightPaintMode() {
 
   if (state.selectedBone) {
     document.getElementById('rotation-controls').classList.add('visible');
+    state.transformControls.setMode('rotate');
+    state.transformControls.setSpace('local');
     attachGizmoTo(state.selectedBone);
   }
 }
@@ -440,6 +514,91 @@ function smoothBoneWeightsOnMesh(mesh, boneIdx) {
   return touched;
 }
 
+// Smooth global : moyenne chaque bone avec ses voisins, puis garde les 4 plus
+// gros poids par vertex et re-normalise à 1.0. Plus correct qu'itérer
+// smoothBoneWeightsOnMesh sur chaque bone (qui re-normalise en cascade).
+function smoothAllWeightsOnMesh(mesh) {
+  const geom = mesh.geometry;
+  const skinIndex = geom.attributes.skinIndex;
+  const skinWeight = geom.attributes.skinWeight;
+  if (!skinIndex || !skinWeight) return 0;
+
+  const vertexCount = geom.attributes.position.count;
+  const boneCount = mesh.skeleton.bones.length;
+  const adj = buildVertexAdjacency(geom);
+
+  // 1. Lire les weights par vertex sous forme de Map<boneIdx, totalWeight>
+  const current = new Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) {
+    const map = new Map();
+    for (let k = 0; k < 4; k++) {
+      const bi = skinIndex.getComponent(i, k);
+      const w = skinWeight.getComponent(i, k);
+      if (w > 0 && bi >= 0 && bi < boneCount) {
+        map.set(bi, (map.get(bi) || 0) + w);
+      }
+    }
+    current[i] = map;
+  }
+
+  // 2. Smooth : pour chaque vertex, somme avec voisins puis divise
+  const wArr = skinWeight.array;
+  const iArr = skinIndex.array;
+
+  for (let i = 0; i < vertexCount; i++) {
+    const accum = new Map();
+    for (const [bi, w] of current[i]) accum.set(bi, w);
+    let count = 1;
+    for (const n of adj[i]) {
+      for (const [bi, w] of current[n]) {
+        accum.set(bi, (accum.get(bi) || 0) + w);
+      }
+      count++;
+    }
+    // Normalise par le nombre de contributeurs
+    for (const bi of accum.keys()) accum.set(bi, accum.get(bi) / count);
+
+    // 3. Garde les 4 plus gros, puis renormalise somme = 1
+    const sorted = [...accum.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    let sum = 0;
+    for (const [, w] of sorted) sum += w;
+    if (sum < 1e-6) continue;
+    const scale = 1 / sum;
+
+    const base = i * 4;
+    for (let k = 0; k < 4; k++) {
+      if (k < sorted.length) {
+        iArr[base + k] = sorted[k][0];
+        wArr[base + k] = sorted[k][1] * scale;
+      } else {
+        iArr[base + k] = 0;
+        wArr[base + k] = 0;
+      }
+    }
+  }
+  return vertexCount;
+}
+
+export function smoothAllWeights() {
+  if (!state.weightPaintMode) {
+    updateInfo('Smooth disponible uniquement en mode Weight Paint.');
+    return;
+  }
+  if (state.skinnedMeshes.length === 0) return;
+
+  let totalTouched = 0;
+  for (const mesh of state.skinnedMeshes) {
+    const touched = smoothAllWeightsOnMesh(mesh);
+    if (touched > 0) {
+      mesh.geometry.attributes.skinWeight.needsUpdate = true;
+      mesh.geometry.attributes.skinIndex.needsUpdate = true;
+      refreshWeightColorsForMesh(mesh);
+      totalTouched += touched;
+    }
+  }
+  updateInfo(`💧 Smooth All : ${totalTouched} vertices lissés sur tous les bones.`);
+}
+
 export function smoothSelectedBoneWeights() {
   if (!state.weightPaintMode) {
     updateInfo('Smooth disponible uniquement en mode Weight Paint.');
@@ -548,7 +707,9 @@ export function paintAtPointer(event) {
 
     const dist = Math.sqrt(d2);
     const t = 1 - (dist / state.brushRadius);
-    const falloff = t * t;
+    // Falloff configurable : exposant 0 = brush dur uniforme, 1 = linéaire,
+    // 2 = quadratique (défaut), >2 = très smooth aux bords.
+    const falloff = state.brushFalloff <= 0 ? 1 : Math.pow(t, state.brushFalloff);
     const delta = sign * stepStrength * falloff;
     if (delta === 0) continue;
 

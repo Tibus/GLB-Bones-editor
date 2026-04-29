@@ -37,6 +37,7 @@ export const state = {
   fbxBonesByName: new Map(),
   selectedBone: null,
   selectedBoneIndex: -1,
+  multiSelectedBones: new Set(),  // bones secondaires (en plus du primary `selectedBone`)
   skeletonHelper: null,
   skeletonVisible: true,
 
@@ -65,9 +66,11 @@ export const state = {
   originalBoundingBoxes: new Map(),   // mesh.uuid -> {min, max}
   brushRadius: 0.08,
   brushStrength: 0.5,
+  brushFalloff: 2,                    // exposant du falloff : 0 = uniforme, 1 = linéaire, 2+ = smooth aux bords
   brushSubtract: false,
   isPainting: false,
   cachedWorldPositions: new Map(),    // mesh.uuid -> Float32Array
+  weightPaintShowShading: true,       // ombrage view-space actif par défaut (cohérent avec le checked HTML)
 
   // Joint edit
   jointEditMode: false,

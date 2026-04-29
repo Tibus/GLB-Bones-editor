@@ -102,6 +102,14 @@
       </label>
     </div>
 
+    <div class="brush-control">
+      <label>
+        <span class="brush-label">Atténuation</span>
+        <input type="range" id="brush-falloff" min="0" max="5" value="2" step="0.1">
+        <input type="number" id="brush-falloff-num" min="0" max="5" value="2" step="0.1">
+      </label>
+    </div>
+
     <div id="weight-legend">
       <span>0.0</span>
       <div class="gradient"></div>
@@ -113,7 +121,13 @@
       Cliquer sur un marker bone pour changer de bone actif. La somme des poids reste à 1.0.
     </div>
 
+    <label class="paint-toggle">
+      <input type="checkbox" id="paint-shading" checked>
+      <span>Afficher les ombres du modèle</span>
+    </label>
+
     <button id="smooth-weights-btn" class="control-btn">💧 Smooth Weights</button>
+    <button id="smooth-all-btn" class="control-btn">💧 Smooth All</button>
     <button id="toggle-rest-pose-btn" class="control-btn">🧍 Pose au repos</button>
   </div>
 
@@ -146,7 +160,7 @@
     </label>
 
     <label class="ik-toggle">
-      <input type="checkbox" id="ik-lock-feet">
+      <input type="checkbox" id="ik-lock-feet" checked>
       <span><strong>Lock feet</strong> — les pieds restent collés au sol pendant le drag</span>
     </label>
 
