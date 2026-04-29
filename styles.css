@@ -1,0 +1,719 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background: #1a1a2e;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+}
+
+#ui {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.file-input-label {
+    background: #4a4a8a;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+    text-align: center;
+    display: block;
+}
+
+.file-input-label:hover {
+    background: #5a5a9a;
+}
+
+#fbx-input-label {
+    background: #8a6a4a;
+}
+
+#fbx-input-label:hover {
+    background: #9a7a5a;
+}
+
+#fbx-input-label.disabled {
+    background: #4a4a4a;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.file-input {
+    display: none;
+}
+
+.control-btn {
+    background: #2a8a4a;
+    border: none;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.control-btn:hover {
+    background: #3a9a5a;
+}
+
+#play-pause-btn.paused {
+    background: #8a4a2a;
+}
+
+#play-pause-btn.paused:hover {
+    background: #9a5a3a;
+}
+
+#toggle-skeleton-btn {
+    background: #6a4a8a;
+}
+
+#toggle-skeleton-btn:hover {
+    background: #7a5a9a;
+}
+
+#toggle-skeleton-btn.hidden {
+    background: #4a4a5a;
+}
+
+#export-glb-btn {
+    background: #2a6a8a;
+}
+
+#export-glb-btn:hover {
+    background: #3a7a9a;
+}
+
+#toggle-rest-pose-btn {
+    background: #4a8a6a;
+    width: 100%;
+    margin-top: 4px;
+}
+
+#smooth-weights-btn {
+    background: #4a6a9a;
+    width: 100%;
+    margin-top: 4px;
+}
+
+#smooth-weights-btn:hover {
+    background: #5a7aaa;
+}
+
+#toggle-rest-pose-btn:hover {
+    background: #5a9a7a;
+}
+
+#toggle-rest-pose-btn.active {
+    background: #aa6aff;
+}
+
+#info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    max-width: 400px;
+}
+
+#info h3 {
+    margin-bottom: 8px;
+    color: #8a8aff;
+}
+
+#animations-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.anim-btn {
+    background: #3a3a6a;
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.anim-btn:hover {
+    background: #5a5aaa;
+}
+
+.anim-btn.active {
+    background: #6a6aff;
+}
+
+.anim-btn.from-fbx {
+    background: #6a5a3a;
+}
+
+.anim-btn.from-fbx:hover {
+    background: #8a7a4a;
+}
+
+.anim-btn.from-fbx.active {
+    background: #aa8a4a;
+}
+
+/* Bone Editor Panel */
+#bone-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    width: 320px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    z-index: 100;
+}
+
+#bone-panel h3 {
+    color: #ff8a6a;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#bone-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #444;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.bone-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #333;
+    transition: all 0.15s;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bone-item .bone-indent {
+    display: inline-block;
+    width: 12px;
+    border-left: 1px solid #555;
+    border-bottom: 1px solid #555;
+    height: 10px;
+    margin-right: 2px;
+    flex-shrink: 0;
+}
+
+.bone-item::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4a9aff;
+    flex-shrink: 0;
+}
+
+.bone-item:hover {
+    background: #3a3a5a;
+}
+
+.bone-item.selected {
+    background: #ff6a4a;
+    color: white;
+    font-weight: 500;
+}
+
+.bone-item.selected::before {
+    background: #ffff00;
+    box-shadow: 0 0 8px #ffff00;
+}
+
+/* Twist bones styling */
+.bone-item.twist-bone {
+    opacity: 0.5;
+    font-style: italic;
+}
+
+.bone-item.twist-bone::before {
+    background: #666;
+}
+
+.bone-item.twist-bone::after {
+    content: '(twist)';
+    font-size: 10px;
+    color: #888;
+    margin-left: auto;
+}
+
+.bone-item:last-child {
+    border-bottom: none;
+}
+
+#rotation-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#rotation-controls.visible {
+    display: flex;
+}
+
+#rotation-controls h4 {
+    color: #6af;
+    margin-bottom: 5px;
+}
+
+.rotation-axis {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.rotation-axis label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+.rotation-axis label span.axis-label {
+    font-weight: bold;
+    width: 20px;
+}
+
+.rotation-axis label span.axis-label.x { color: #ff6b6b; }
+.rotation-axis label span.axis-label.y { color: #6bff6b; }
+.rotation-axis label span.axis-label.z { color: #6b6bff; }
+
+.rotation-axis input[type="range"] {
+    flex: 1;
+    margin: 0 10px;
+    accent-color: #6a6aff;
+}
+
+.rotation-axis input[type="number"] {
+    width: 70px;
+    background: #2a2a4a;
+    border: 1px solid #444;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+#reset-bone-btn {
+    background: #6a3a3a;
+    border: none;
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-top: 10px;
+    transition: background 0.2s;
+}
+
+#reset-bone-btn:hover {
+    background: #8a4a4a;
+}
+
+#selected-bone-name {
+    background: #2a2a4a;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-weight: 500;
+    color: #ff8a6a;
+    text-align: center;
+}
+
+#loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 18px;
+    display: none;
+    text-align: center;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top-color: #6a6aff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#no-bones-msg {
+    color: #888;
+    font-style: italic;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Legend */
+#skeleton-legend {
+    margin-top: 15px;
+    padding: 10px;
+    background: #2a2a3a;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+#skeleton-legend h5 {
+    color: #aaa;
+    margin-bottom: 8px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.legend-color.bone { background: #4a9aff; }
+.legend-color.selected { background: #ffff00; box-shadow: 0 0 6px #ffff00; }
+.legend-color.skeleton { background: #00ffaa; }
+.legend-color.twist { background: #666; }
+
+/* Gizmo hint */
+#gizmo-hint {
+    margin-top: 10px;
+    padding: 10px;
+    background: #3a3a5a;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #aaa;
+}
+
+#gizmo-hint strong {
+    color: #ff8a6a;
+}
+
+/* FBX Status */
+#fbx-status {
+    margin-top: 10px;
+    padding: 10px;
+    background: #3a3a2a;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #aa8;
+    display: none;
+}
+
+#fbx-status.visible {
+    display: block;
+}
+
+#fbx-status strong {
+    color: #dda;
+}
+
+/* Scrollbar styling */
+#bone-list::-webkit-scrollbar,
+#bone-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+#bone-list::-webkit-scrollbar-track,
+#bone-panel::-webkit-scrollbar-track {
+    background: #1a1a2e;
+    border-radius: 4px;
+}
+
+#bone-list::-webkit-scrollbar-thumb,
+#bone-panel::-webkit-scrollbar-thumb {
+    background: #4a4a6a;
+    border-radius: 4px;
+}
+
+#bone-list::-webkit-scrollbar-thumb:hover,
+#bone-panel::-webkit-scrollbar-thumb:hover {
+    background: #5a5a8a;
+}
+
+/* Animations section styling */
+.anim-section {
+    margin-top: 10px;
+}
+
+.anim-section-title {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+/* Mode toggle (Pose / Weight Paint / Joints) */
+#mode-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.mode-btn {
+    flex: 1;
+    background: #2a2a4a;
+    border: 1px solid #444;
+    color: #aaa;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+
+.mode-btn:hover {
+    background: #3a3a5a;
+    color: white;
+}
+
+.mode-btn.active {
+    background: #6a4a8a;
+    color: white;
+    border-color: #8a6aaa;
+}
+
+.mode-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Weight Paint controls */
+#weight-paint-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#weight-paint-controls.visible {
+    display: flex;
+}
+
+#weight-paint-controls h4 {
+    color: #ff8aff;
+    margin-bottom: 5px;
+}
+
+.brush-control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.brush-control label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+.brush-control label .brush-label {
+    font-weight: bold;
+    width: 60px;
+    color: #ff8aff;
+}
+
+.brush-control input[type="range"] {
+    flex: 1;
+    margin: 0 10px;
+    accent-color: #aa6acc;
+}
+
+.brush-control input[type="number"] {
+    width: 70px;
+    background: #2a2a4a;
+    border: 1px solid #444;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+#paint-hint {
+    margin-top: 5px;
+    padding: 10px;
+    background: #3a2a4a;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+#paint-hint strong {
+    color: #ff8aff;
+}
+
+#weight-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 5px;
+    font-size: 11px;
+    color: #aaa;
+}
+
+#weight-legend .gradient {
+    flex: 1;
+    height: 12px;
+    border-radius: 3px;
+    background: linear-gradient(to right,
+      rgb(0,0,255) 0%,
+      rgb(0,255,255) 25%,
+      rgb(0,255,0) 50%,
+      rgb(255,255,0) 75%,
+      rgb(255,0,0) 100%);
+}
+
+/* Joint edit controls */
+#joint-edit-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#joint-edit-controls.visible {
+    display: flex;
+}
+
+#joint-edit-controls h4 {
+    color: #ffaa6a;
+    margin-bottom: 5px;
+}
+
+#joint-bone-name {
+    background: #2a2a4a;
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 500;
+    color: #ffaa6a;
+    text-align: center;
+}
+
+#joint-hint {
+    padding: 10px;
+    background: #3a2e1e;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.5;
+}
+
+#joint-hint strong {
+    color: #ffaa6a;
+}
+
+#reset-joints-btn {
+    background: #6a4a3a;
+    border: none;
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+#reset-joints-btn:hover {
+    background: #8a5a4a;
+}
+
+/* IK controls */
+#ik-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#ik-controls.visible {
+    display: flex;
+}
+
+#ik-controls h4 {
+    color: #ff8800;
+    margin-bottom: 5px;
+}
+
+#ik-hint {
+    padding: 10px;
+    background: #3a2818;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.5;
+}
+
+#ik-hint strong {
+    color: #ff8800;
+}
+
+.ik-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    background: #2a2a3a;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+.ik-toggle input[type="checkbox"] {
+    margin-top: 2px;
+    accent-color: #ff8800;
+    flex-shrink: 0;
+}
+
+.ik-toggle strong {
+    color: #ff8800;
+}
