@@ -44,6 +44,8 @@ export const state = {
   activeAction: null,
   isPlaying: true,
   clock: new THREE.Clock(),
+  isScrubbingTimeline: false,  // true pendant que l'utilisateur drag le slider de la timeline
+  pendingSeekTime: null,        // temps en secondes à appliquer au prochain frame (coalesce les events input)
 
   // Bones
   bones: [],

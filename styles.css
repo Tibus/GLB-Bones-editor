@@ -139,7 +139,7 @@ body {
 
 #info {
     position: fixed;
-    bottom: 20px;
+    bottom: 88px;             /* laisse la place à la timeline (≈56px de haut + 12px d'écart) */
     left: 20px;
     background: rgba(0, 0, 0, 0.85);
     color: white;
@@ -881,5 +881,89 @@ body {
 
 .ik-toggle strong {
     color: #ff8800;
+}
+
+/* Timeline d'animation (bas de page) */
+#animation-timeline {
+    position: fixed;
+    bottom: 12px;
+    left: 20px;
+    right: 20px;
+    width: auto;
+    display: none;            /* affiché dès qu'une animation est jouée */
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 10px;
+    color: white;
+    font-size: 13px;
+    z-index: 100;
+    user-select: none;
+}
+
+#animation-timeline.visible {
+    display: flex;
+}
+
+#timeline-play-btn {
+    background: #2a8a4a;
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+#timeline-play-btn:hover {
+    background: #3aaa5a;
+}
+#timeline-play-btn.paused {
+    background: #c0392b;
+}
+#timeline-play-btn.paused:hover {
+    background: #e04030;
+}
+
+#timeline-current,
+#timeline-duration {
+    font-variant-numeric: tabular-nums;
+    color: #cfd0e0;
+    flex-shrink: 0;
+    min-width: 40px;
+    text-align: center;
+}
+
+#timeline-scrub {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+#timeline-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #8a8aff;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+}
+#timeline-scrub::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #8a8aff;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 

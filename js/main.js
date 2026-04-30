@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { initScene } from './scene.js';
-import { animate, togglePlayPause, toggleSkeleton, toggleRestPose } from './animation.js';
+import { animate, togglePlayPause, toggleSkeleton, toggleRestPose, attachTimelineListeners } from './animation.js';
 import {
   selectBone, deselectBone, onCanvasClick,
   updateBoneRotation, resetBoneRotation, updateRotationUI,
@@ -74,6 +74,9 @@ document.getElementById('play-pause-btn').addEventListener('click', togglePlayPa
 document.getElementById('toggle-skeleton-btn').addEventListener('click', toggleSkeleton);
 document.getElementById('toggle-rest-pose-btn').addEventListener('click', toggleRestPose);
 document.getElementById('export-glb-btn').addEventListener('click', exportToGLB);
+
+// Timeline d'animation (play/pause + scrub)
+attachTimelineListeners();
 
 // Click sur le canvas (sélection bone via marker)
 state.renderer.domElement.addEventListener('click', onCanvasClick);

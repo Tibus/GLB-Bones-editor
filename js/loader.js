@@ -95,9 +95,11 @@ export function loadPrincipal(url, filename) {
     state.mixer.stopAllAction();
     state.mixer = null;
   }
+  state.activeAction = null;
 
   setFbxInputEnabled(false);
   document.getElementById('fbx-status').classList.remove('visible');
+  document.getElementById('animation-timeline')?.classList.remove('visible');
 
   const lower = filename.toLowerCase();
   if (lower.endsWith('.gltf') || lower.endsWith('.glb')) {

@@ -58,6 +58,113 @@ export function playAnimation(index, source = 'glb') {
   });
 
   updateInfo(`Animation: "${clip.name}" (${clip.duration.toFixed(2)}s) - Source: ${source.toUpperCase()}`);
+
+  document.getElementById('animation-timeline')?.classList.add('visible');
+  syncTimelinePlayBtn();
+}
+
+function formatTime(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function syncTimelinePlayBtn() {
+  const btn = document.getElementById('timeline-play-btn');
+  if (!btn) return;
+  if (state.isPlaying) {
+    btn.textContent = '⏸️';
+    btn.classList.remove('paused');
+  } else {
+    btn.textContent = '▶️';
+    btn.classList.add('paused');
+  }
+}
+
+// Repositionne l'animation au temps `time` (secondes). Force un update à delta=0
+// du mixer concerné pour que la pose soit appliquée immédiatement même en pause
+// (un AnimationAction "paused" est skipé par mixer.update — on l'unpause juste
+// le temps d'évaluer puis on restaure le flag).
+export function seekActiveActionTo(time) {
+  const action = state.activeAction;
+  if (!action) return;
+  const clip = action.getClip();
+  const t = Math.max(0, Math.min(clip.duration, time));
+  action.time = t;
+  const wasPaused = action.paused;
+  action.paused = false;
+  if (state.mixerFbx && action.getMixer() === state.mixerFbx) {
+    state.mixerFbx.update(0);
+    matchFbxAnimationToPrincipal();
+  } else if (state.mixer) {
+    state.mixer.update(0);
+    if (state.selectedBone) updateRotationUI();
+  }
+  action.paused = wasPaused;
+}
+
+function updateTimelineUI() {
+  const action = state.activeAction;
+  const slider = document.getElementById('timeline-scrub');
+  const cur = document.getElementById('timeline-current');
+  const dur = document.getElementById('timeline-duration');
+  if (!slider || !cur || !dur) return;
+  if (!action) {
+    cur.textContent = '0:00';
+    dur.textContent = '0:00';
+    slider.value = '0';
+    return;
+  }
+  if (state.isScrubbingTimeline) return; // ne pas écraser pendant que l'user drag
+  const clip = action.getClip();
+  const duration = clip.duration || 0;
+  const t = action.time;
+  const ratio = duration > 0 ? Math.max(0, Math.min(1, t / duration)) : 0;
+  slider.value = String(Math.round(ratio * 1000));
+  cur.textContent = formatTime(t);
+  dur.textContent = formatTime(duration);
+}
+
+export function attachTimelineListeners() {
+  const playBtn = document.getElementById('timeline-play-btn');
+  const slider = document.getElementById('timeline-scrub');
+  if (!playBtn || !slider) return;
+
+  playBtn.addEventListener('click', () => {
+    togglePlayPause();
+    syncTimelinePlayBtn();
+  });
+
+  // Quand l'utilisateur commence à scrubber : pause auto + flag
+  let wasPlaying = false;
+  const startScrub = () => {
+    wasPlaying = state.isPlaying;
+    state.isScrubbingTimeline = true;
+    if (state.isPlaying) togglePlayPause();
+  };
+  const endScrub = () => {
+    state.isScrubbingTimeline = false;
+    if (wasPlaying && !state.isPlaying) togglePlayPause();
+    syncTimelinePlayBtn();
+  };
+
+  slider.addEventListener('pointerdown', startScrub);
+  slider.addEventListener('pointerup', endScrub);
+  slider.addEventListener('pointercancel', endScrub);
+
+  // Coalesce les events input : on enregistre juste le temps souhaité, l'animate
+  // loop l'appliquera une fois par frame. Sinon matchFbxAnimationToPrincipal
+  // (coûteux) peut être appelé plusieurs fois par frame sur certains browsers.
+  slider.addEventListener('input', () => {
+    const action = state.activeAction;
+    if (!action) return;
+    const ratio = parseFloat(slider.value) / 1000;
+    const duration = action.getClip().duration || 0;
+    state.pendingSeekTime = ratio * duration;
+    const cur = document.getElementById('timeline-current');
+    if (cur) cur.textContent = formatTime(state.pendingSeekTime);
+  });
 }
 
 export function togglePlayPause() {
@@ -73,6 +180,7 @@ export function togglePlayPause() {
     btn.classList.add('paused');
     if (state.activeAction) state.activeAction.paused = true;
   }
+  syncTimelinePlayBtn();
 }
 
 export function toggleRestPose() {
@@ -212,10 +320,17 @@ export function animate() {
     }
   }
 
+  // Applique le seek demandé par le scrub timeline (au plus une fois par frame)
+  if (state.pendingSeekTime !== null) {
+    seekActiveActionTo(state.pendingSeekTime);
+    state.pendingSeekTime = null;
+  }
+
   updateBoneMarkers();
   if (state.ikMode && !state.isDraggingIK) refreshIKMarkers();
   if (state.ikMode) updateIKConnectionLines();
   updateJointAxisArrow();
+  updateTimelineUI();
   state.controls.update();
   state.renderer.render(state.scene, state.camera);
 }
