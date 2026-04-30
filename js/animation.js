@@ -49,7 +49,8 @@ export function playAnimation(index, source = 'glb') {
   state.activeAction.fadeIn(0.1);
   state.activeAction.play();
 
-  if (!state.isPlaying) state.activeAction.paused = true;
+  // Changer d'animation reprend automatiquement la lecture si on était en pause
+  if (!state.isPlaying) togglePlayPause();
 
   document.querySelectorAll('.anim-btn').forEach((btn) => {
     const btnSource = btn.dataset.source;
