@@ -270,8 +270,8 @@ export function matchFbxAnimationToPrincipal() {
   const targetRootBindLocal = state.rootOriginalLocalPosition;
 
   if (fbxRoot && fbxRootBindLocal && targetRoot && targetRootBindLocal) {
-    const fbxBindMag = fbxRootBindLocal.length();
-    const ratio = fbxBindMag > 1e-6 ? targetRootBindLocal.length() / fbxBindMag : 1;
+    const fbxBindMag = fbxHipsBindLocal.length();
+    const ratio = fbxBindMag > 1e-6 ? targetHipBindLocal.length() / fbxBindMag : 1;
     if(state.fbxSourceFormat === "FBX"){
       // Axe vertical FBX = Y (Mixamo), GLB = Z (ce rig). Ajuste si besoin.
       const deltaVerticalFBX_Y = fbxRoot.position.y - fbxRootBindLocal.y;

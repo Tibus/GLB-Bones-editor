@@ -7,7 +7,7 @@ import { updateRotationUI, updateBoneMarkers } from './bones.js';
 import { matchFbxAnimationToPrincipal } from './fbx-anim.js';
 import { rebuildWorldPositionCache, refreshWeightColors } from './weight-paint.js';
 import { refreshIKMarkers, updateIKConnectionLines } from './ik.js';
-import { isBoneRotatableInJointMode, getJointAxisForBone } from './joint-edit.js';
+import { isBoneRotatableInJointMode, getJointAxisForBone, getJointAxisSignForBone } from './joint-edit.js';
 
 const _arrowDir = new THREE.Vector3();
 const _arrowQ = new THREE.Quaternion();
@@ -21,9 +21,10 @@ function updateJointAxisArrow() {
     bone.getWorldPosition(arrow.position);
     bone.getWorldQuaternion(_arrowQ);
     const axis = getJointAxisForBone(bone);
-    if (axis === 'x') _arrowDir.set(1, 0, 0);
-    else if (axis === 'y') _arrowDir.set(0, 1, 0);
-    else _arrowDir.set(0, 0, 1);
+    const sign = getJointAxisSignForBone(bone);
+    if (axis === 'x') _arrowDir.set(sign, 0, 0);
+    else if (axis === 'y') _arrowDir.set(0, sign, 0);
+    else _arrowDir.set(0, 0, sign);
     _arrowDir.applyQuaternion(_arrowQ);
     arrow.setDirection(_arrowDir);
     arrow.visible = true;

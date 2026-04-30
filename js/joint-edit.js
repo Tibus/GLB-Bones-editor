@@ -32,6 +32,7 @@ export const rotatableInJointMode = new Map([
   ["R_Hand", { axis: 'z' }],
   ["L_Foot", { axis: 'y' }],
   ["R_Foot", { axis: 'y' }],
+  ["Head",   { axis: 'z', sign: -1 }],
 ]);
 window.rotatableInJointMode = rotatableInJointMode;
 
@@ -45,6 +46,13 @@ export function getJointAxisForBone(bone) {
   if (!bone) return 'z';
   const cfg = rotatableInJointMode.get(bone.name);
   return cfg?.axis || 'z';
+}
+
+// Signe à appliquer sur l'axe (+1 par défaut, -1 pour inverser le sens d'affichage).
+export function getJointAxisSignForBone(bone) {
+  if (!bone) return 1;
+  const cfg = rotatableInJointMode.get(bone.name);
+  return cfg?.sign ?? 1;
 }
 
 // ============================================================
