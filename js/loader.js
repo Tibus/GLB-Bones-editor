@@ -195,6 +195,9 @@ function manageCurrentModelAfterLoad() {
   state.hipsOriginalPosition = state.bonesByName.get('Hip')?.getWorldPosition(new THREE.Vector3());
   state.hipsOriginalLocalPosition = state.bonesByName.get('Hip')?.position.clone();
 
+  state.rootOriginalPosition = state.bonesByName.get('Root')?.getWorldPosition(new THREE.Vector3());
+  state.rootOriginalLocalPosition = state.bonesByName.get('Root')?.position.clone();
+
   // Hauteur world du modèle (max des 3 axes — gère les rigs Y-up et Z-up)
   {
     const bbox = new THREE.Box3().setFromObject(state.currentModel);
@@ -229,6 +232,99 @@ function manageCurrentModelAfterLoad() {
   state.controls.update();
 }
 
+// Post-load commun : positionnement, skeleton helper, mixer, collecte des bones,
+// snapshot des positions Hips. `model` est le THREE.Object3D racine et `animations`
+// est un array d'AnimationClip (déjà extraits du fichier source).
+function setupSecondaryAnimationSource(model, animations, filename, sourceLabel) {
+  state.secondaryFbxModel = model;
+  state.fbxAnimations = animations || [];
+
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  // Place le modèle à droite du modèle principal
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = 4 / maxDim;
+  model.scale.multiplyScalar(scale);
+
+  box.setFromObject(model);
+  box.getCenter(center);
+  model.rotation.y += Math.PI / 2;
+  model.position.sub(center);
+  model.position.y += (size.y * scale) / 2;
+  model.position.z += (size.z * scale) * 2;
+
+  state.scene.add(model);
+
+  const bbox = new THREE.Box3().setFromObject(model);
+  const finalSize = bbox.getSize(new THREE.Vector3());
+  state.fbxHeight = Math.max(finalSize.x, finalSize.y, finalSize.z);
+
+  state.skeletonHelperFbx = new THREE.SkeletonHelper(model);
+  state.skeletonHelperFbx.material.linewidth = 2;
+  state.skeletonHelperFbx.material.color.setHex(0xffaa00);
+  state.skeletonHelperFbx.visible = state.skeletonVisible;
+  state.scene.add(state.skeletonHelperFbx);
+
+  if (animations.length > 0) {
+    state.mixerFbx = new THREE.AnimationMixer(model);
+  }
+
+  // Collecte des bones (nettoyage des préfixes type "mixamorig")
+  state.fbxBonesByName.clear();
+  model.traverse((child) => {
+    if (child.isBone) {
+      const cleanName = child.name.replace(/^mixamorig[_:1-9]?/i, '');
+      if (!state.fbxBonesByName.has(cleanName)) {
+        state.fbxBonesByName.set(cleanName, child);
+      }
+    }
+  });
+
+  model.updateWorldMatrix(true, true);
+  // Convention root selon la source :
+  //   FBX (Mixamo) → bone "Hips"
+  //   GLB           → bone "root"
+  // On stocke le nom et la référence pour que fbx-anim.js sache quoi utiliser
+  // pour la transposition verticale du Hip cible.
+  state.fbxSourceFormat = sourceLabel;
+  state.fbxSourceRootName = sourceLabel === 'FBX' ? 'Hips' : 'pelvis';
+  let hipsBone = state.fbxBonesByName.get(state.fbxSourceRootName);
+  if (!hipsBone) {
+    // Fallback : tente l'autre convention au cas où le fichier ne suit pas la règle
+    hipsBone = state.fbxBonesByName.get('Hips')
+            || state.fbxBonesByName.get('root')
+            || state.fbxBonesByName.get('pelvis');
+  }
+  state.fbxHipsBone = hipsBone || null;
+  state.fbxRootBone = state.fbxBonesByName.get('root');
+  state.fbxHipsOriginalPosition = hipsBone?.getWorldPosition(new THREE.Vector3());
+  state.fbxHipsOriginalLocalPosition = hipsBone?.position.clone();
+
+  state.fbxRootOriginalPosition = state.fbxBonesByName.get('root')?.getWorldPosition(new THREE.Vector3());
+  state.fbxRootOriginalLocalPosition = state.fbxBonesByName.get('root')?.position.clone();
+
+  if (state.fbxAnimations.length > 0) {
+    updateAnimationsList();
+    playAnimation(0, 'fbx');
+    document.getElementById('fbx-filename').textContent = filename;
+    document.getElementById('fbx-status').classList.add('visible');
+    updateInfo(`${state.fbxAnimations.length} animation(s) ${sourceLabel} chargée(s) et appliquée(s).`);
+  } else {
+    updateInfo(`Aucune animation compatible trouvée dans le ${sourceLabel}. Vérifie que les noms des bones correspondent.`);
+  }
+}
+
+// Charge un fichier d'animation secondaire — accepte FBX, GLB et GLTF.
+// Le format est détecté via l'extension du filename.
 export function loadFBXAnimation(url, filename) {
   if (!state.currentModel || !state.mixer) {
     updateInfo("Veuillez d'abord charger un modèle GLB.");
@@ -237,9 +333,8 @@ export function loadFBXAnimation(url, filename) {
 
   const loading = document.getElementById('loading');
   loading.style.display = 'block';
-  loading.querySelector('p').textContent = 'Chargement animation FBX...';
 
-  // Supprime le FBX secondaire précédent
+  // Supprime la source secondaire précédente
   if (state.secondaryFbxModel) {
     state.scene.remove(state.secondaryFbxModel);
     state.secondaryFbxModel.traverse((child) => {
@@ -260,90 +355,36 @@ export function loadFBXAnimation(url, filename) {
     state.mixerFbx = null;
   }
 
-  fbxLoader.load(
-    url,
-    (fbx) => {
-      loading.style.display = 'none';
-      state.secondaryFbxModel = fbx;
+  const lower = filename.toLowerCase();
+  const isGLB = lower.endsWith('.glb') || lower.endsWith('.gltf');
+  const isFBX = lower.endsWith('.fbx');
+  const sourceLabel = isGLB ? 'GLB' : 'FBX';
+  loading.querySelector('p').textContent = `Chargement animation ${sourceLabel}...`;
 
-      fbx.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-
-      // Place le FBX à droite du modèle principal
-      const box = new THREE.Box3().setFromObject(fbx);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 4 / maxDim;
-      fbx.scale.multiplyScalar(scale);
-
-      box.setFromObject(fbx);
-      box.getCenter(center);
-      fbx.rotation.y += Math.PI / 2;
-      fbx.position.sub(center);
-      fbx.position.y += (size.y * scale) / 2;
-      fbx.position.z += (size.z * scale) * 2;
-
-      state.scene.add(fbx);
-
-      // Hauteur world du FBX (max des 3 axes) pour le ratio de translation Hip
-      {
-        const bbox = new THREE.Box3().setFromObject(fbx);
-        const fbxSize = bbox.getSize(new THREE.Vector3());
-        state.fbxHeight = Math.max(fbxSize.x, fbxSize.y, fbxSize.z);
-      }
-
-      state.skeletonHelperFbx = new THREE.SkeletonHelper(fbx);
-      state.skeletonHelperFbx.material.linewidth = 2;
-      state.skeletonHelperFbx.material.color.setHex(0xffaa00);
-      state.skeletonHelperFbx.visible = state.skeletonVisible;
-      state.scene.add(state.skeletonHelperFbx);
-
-      const fbxAnims = fbx.animations || [];
-      if (fbxAnims.length > 0) {
-        state.mixerFbx = new THREE.AnimationMixer(fbx);
-        state.activeAction = state.mixerFbx.clipAction(fbxAnims[0]);
-        state.activeAction.play();
-      }
-
-      // Collecte les bones FBX (avec nettoyage du préfixe "mixamorig")
-      state.fbxBonesByName.clear();
-      fbx.traverse((child) => {
-        if (child.isBone) {
-          const cleanName = child.name.replace(/^mixamorig[_:1-9]?/i, '');
-          if (!state.fbxBonesByName.has(cleanName)) {
-            state.fbxBonesByName.set(cleanName, child);
-          }
-        }
-      });
-
-      fbx.updateWorldMatrix(true, true);
-      state.fbxHipsOriginalPosition = state.fbxBonesByName.get('Hips')?.getWorldPosition(new THREE.Vector3());
-      state.fbxHipsOriginalLocalPosition = state.fbxBonesByName.get('Hips')?.position.clone();
-
-      if (state.fbxAnimations.length > 0) {
-        updateAnimationsList();
-        playAnimation(0, 'fbx');
-        document.getElementById('fbx-filename').textContent = filename;
-        document.getElementById('fbx-status').classList.add('visible');
-        updateInfo(`${state.fbxAnimations.length} animation(s) FBX chargée(s) et appliquée(s).`);
-      } else {
-        updateInfo('Aucune animation compatible trouvée dans le FBX. Vérifiez que les noms des bones correspondent.');
-      }
-    },
-    (progress) => {
+  const onProgress = (progress) => {
+    if (progress.total) {
       const percent = (progress.loaded / progress.total * 100).toFixed(0);
-      loading.querySelector('p').textContent = `Chargement FBX... ${percent}%`;
-    },
-    (error) => {
+      loading.querySelector('p').textContent = `Chargement ${sourceLabel}... ${percent}%`;
+    }
+  };
+  const onError = (error) => {
+    loading.style.display = 'none';
+    console.error(`Erreur de chargement ${sourceLabel}:`, error);
+    updateInfo(`Erreur lors du chargement du fichier ${sourceLabel}.`);
+  };
+
+  if (isFBX) {
+    fbxLoader.load(url, (fbx) => {
       loading.style.display = 'none';
-      console.error('Erreur de chargement FBX:', error);
-      updateInfo('Erreur lors du chargement du fichier FBX.');
-    },
-  );
+      setupSecondaryAnimationSource(fbx, fbx.animations || [], filename, 'FBX');
+    }, onProgress, onError);
+  } else if (isGLB) {
+    gltfLoader.load(url, (gltf) => {
+      loading.style.display = 'none';
+      setupSecondaryAnimationSource(gltf.scene, gltf.animations || [], filename, 'GLB');
+    }, onProgress, onError);
+  } else {
+    loading.style.display = 'none';
+    updateInfo(`Format non supporté pour l'animation : ${filename}`);
+  }
 }

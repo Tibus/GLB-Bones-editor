@@ -33,18 +33,19 @@ function updateJointAxisArrow() {
 }
 
 export function playAnimation(index, source = 'glb') {
-  if (!state.mixer) return;
+  const mixer = source === 'fbx' ? state.mixerFbx : state.mixer;
+  if (!mixer) return;
 
   const animations = source === 'glb' ? state.principalAnimations : state.fbxAnimations;
   if (index >= animations.length) return;
 
   const clip = animations[index];
 
-  if (state.activeAction) state.activeAction.fadeOut(2.0);
+  if (state.activeAction) state.activeAction.fadeOut(0.1);
 
-  state.activeAction = state.mixer.clipAction(clip);
+  state.activeAction = mixer.clipAction(clip);
   state.activeAction.reset();
-  state.activeAction.fadeIn(2.0);
+  state.activeAction.fadeIn(0.1);
   state.activeAction.play();
 
   if (!state.isPlaying) state.activeAction.paused = true;

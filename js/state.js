@@ -22,7 +22,12 @@ export const state = {
   secondaryFbxModel: null,
   skeletonHelperFbx: null,
   fbxHipsOriginalPosition: null,
+  fbxRootOriginalPosition: null,
   fbxAnimations: [],
+  fbxSourceFormat: null,    // 'FBX' | 'GLB' — détermine la convention de root
+  fbxSourceRootName: null,  // 'Hips' (FBX/Mixamo) ou 'root' (GLB)
+  fbxHipsBone: null,        // référence directe au bone racine de la source secondaire
+  fbxRootBone: null,        // référence directe au bone racine de la source secondaire
 
   // Hauteurs world cachées au load (ratio de translation Hip pour le retargeting FBX)
   glbHeight: 1,
@@ -30,6 +35,8 @@ export const state = {
   // Positions LOCALES bind des Hips (pour calculer le delta local du retargeting FBX)
   hipsOriginalLocalPosition: null,
   fbxHipsOriginalLocalPosition: null,
+  rootOriginalLocalPosition: null,
+  fbxRootOriginalLocalPosition: null,
 
   // Animation
   mixer: null,
