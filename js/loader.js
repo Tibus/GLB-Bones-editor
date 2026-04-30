@@ -261,6 +261,7 @@ function setupSecondaryAnimationSource(model, animations, filename, sourceLabel)
   model.position.sub(center);
   model.position.y += (size.y * scale) / 2;
   model.position.z += (size.z * scale) * 2;
+  model.visible = false;
 
   state.scene.add(model);
 
@@ -272,7 +273,7 @@ function setupSecondaryAnimationSource(model, animations, filename, sourceLabel)
   state.skeletonHelperFbx.material.linewidth = 2;
   state.skeletonHelperFbx.material.color.setHex(0xffaa00);
   state.skeletonHelperFbx.visible = state.skeletonVisible;
-  state.scene.add(state.skeletonHelperFbx);
+  // state.scene.add(state.skeletonHelperFbx);
 
   if (animations.length > 0) {
     state.mixerFbx = new THREE.AnimationMixer(model);
