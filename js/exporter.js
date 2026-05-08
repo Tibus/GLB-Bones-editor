@@ -10,6 +10,7 @@ import { updateInfo } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
 import { exitIKMode } from './ik.js';
+import { exitPropsMode } from './props.js';
 
 const exporter = new GLTFExporter();
 
@@ -24,6 +25,7 @@ export function exportToGLB() {
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
   if (state.ikMode) exitIKMode();
+  if (state.propsMode) exitPropsMode();
 
   updateInfo('Export GLB en cours…');
 
@@ -83,6 +85,81 @@ export function exportToGLB() {
     }
   });
 
+  // 4. Reparente chaque prop sous currentModel avec un marqueur dans userData.
+  //    `attach()` (vs `add()`) convertit le matrix world→local pour préserver
+  //    la position monde du prop pendant l'export.
+  // 4b. Pour chaque prop avec cage : on remet la géométrie du prop en pose REST
+  //     (avant déformation) puis on snapshot les positions déformées pour pouvoir
+  //     les restaurer après parse(). Les rest positions de la cage sont stockées
+  //     dans userData. La cage devient exportable, mais les markers (visualisation
+  //     uniquement) sont cachés via visible=false (skipés par onlyVisible:true).
+  //     => Le GLB contient :
+  //        - la géométrie du prop en REST (= forme d'origine)
+  //        - le cage mesh avec ses positions LIVE (= déformation actuelle)
+  //        - userData.glbBonesEditor.rest = positions REST de la cage
+  //     Au reload : binding recalculé sur le prop rest + cage rest, puis on
+  //     ré-applique (live − rest) → la déformation est restaurée. Si l'utilisateur
+  //     reset la cage, le prop revient à sa forme d'origine.
+  const propsSnapshot = [];
+  const cageExportSnapshots = []; // [{ deformedPerMesh: Map<mesh, Float32Array>, hiddenMarkers: [] }]
+  if (Array.isArray(state.props)) {
+    for (const prop of state.props) {
+      propsSnapshot.push({ root: prop.root, parent: prop.root.parent });
+      // Persist le binding éventuel (boundToBone) pour le retrouver au reload
+      prop.root.userData.glbBonesEditor = {
+        kind: 'prop',
+        name: prop.name,
+        ...(prop.binding ? { boundToBone: prop.binding.boneName } : {}),
+      };
+      // Si le prop est déjà dans le subtree de currentModel (cas des props
+      // liés à un bone), on le laisse en place pour préserver le parent bone
+      // dans le GLB. Sinon on l'attache à currentModel pour qu'il soit exporté.
+      let insideCurrentModel = false;
+      let n = prop.root.parent;
+      while (n) {
+        if (n === state.currentModel) { insideCurrentModel = true; break; }
+        n = n.parent;
+      }
+      if (!insideCurrentModel) {
+        state.currentModel.attach(prop.root);
+      }
+
+      if (prop.cage) {
+        const deformedPerMesh = new Map();
+        const tmpV = new THREE.Vector3();
+        // Snapshot et reset chaque mesh à la rest
+        for (const mb of prop.cage.meshBindings) {
+          const pos = mb.mesh.geometry.attributes.position;
+          deformedPerMesh.set(mb.mesh, new Float32Array(pos.array));
+          for (let i = 0; i < pos.count; i++) {
+            const i3 = i * 3;
+            tmpV.set(mb.restPropLocal[i3], mb.restPropLocal[i3 + 1], mb.restPropLocal[i3 + 2])
+              .applyMatrix4(mb.M_propToMesh);
+            pos.setXYZ(i, tmpV.x, tmpV.y, tmpV.z);
+          }
+          pos.needsUpdate = true;
+        }
+        // userData posé sur le cage mesh lui-même (plus fiable que sur le Group
+        // côté round-trip GLB).
+        prop.cage.cageMesh.userData.glbBonesEditor = {
+          kind: 'cage',
+          rest: Array.from(prop.cage.restPositions),
+        };
+        // Markers : visible=false → skipés à l'export
+        const hiddenMarkers = [];
+        for (const m of prop.cage.markers) {
+          if (m.visible) {
+            m.visible = false;
+            hiddenMarkers.push(m);
+          }
+        }
+        // Cage group lui-même : visible (= exportable)
+        prop.cage.group.visible = true;
+        cageExportSnapshots.push({ prop, deformedPerMesh, hiddenMarkers });
+      }
+    }
+  }
+
   const restoreState = () => {
     // Rotations
     state.bones.forEach((b) => {
@@ -100,6 +177,26 @@ export function exportToGLB() {
     }
     if (state.mixer) state.mixer.timeScale = animSnap.mixerScale;
     if (state.mixerFbx) state.mixerFbx.timeScale = animSnap.mixerFbxScale;
+    // Props : remet chaque prop sous son parent d'origine (en préservant le world)
+    for (const snap of propsSnapshot) {
+      (snap.parent || state.scene).attach(snap.root);
+    }
+    // Cages : remet la déformation des prop meshes + markers visibles
+    for (const snap of cageExportSnapshots) {
+      for (const [mesh, arr] of snap.deformedPerMesh) {
+        const pos = mesh.geometry.attributes.position;
+        pos.array.set(arr);
+        pos.needsUpdate = true;
+      }
+      for (const m of snap.hiddenMarkers) m.visible = true;
+    }
+    // Restaure la visibilité des cage groups selon le mode courant : visibles
+    // uniquement si on est en mode Props.
+    if (Array.isArray(state.props)) {
+      for (const prop of state.props) {
+        if (prop.cage?.group) prop.cage.group.visible = !!state.propsMode;
+      }
+    }
   };
 
   exporter.parse(

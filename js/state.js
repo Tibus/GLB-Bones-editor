@@ -139,6 +139,12 @@ export const state = {
   // ArrowHelper affichant l'axe Y local du bone sélectionné en mode joints
   // (mains/pieds) — pour visualiser le sens de la main/pied.
   jointAxisArrow: null,
+
+  // Props (objets additionnels importés en GLB)
+  propsMode: false,
+  props: [],                // [{ id, name, root: Object3D }]
+  selectedProp: null,
+  propGizmoMode: 'translate', // 'translate' | 'rotate' | 'scale'
 };
 
 // Expose pour debug console

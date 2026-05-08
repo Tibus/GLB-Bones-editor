@@ -22,6 +22,8 @@ import {
   attachJointDragListeners, attachJointRotationListeners,
 } from './joint-edit.js';
 import { enterIKMode, exitIKMode, attachIKDragListeners, updateGroundPreview } from './ik.js';
+import { enterPropsMode, exitPropsMode, attachPropsListeners } from './props.js';
+import { tryPickCageVertex, attachCageListeners } from './cage.js';
 import { undo, redo, pushUndo } from './history.js';
 import { exportToGLB } from './exporter.js';
 
@@ -78,13 +80,18 @@ document.getElementById('export-glb-btn').addEventListener('click', exportToGLB)
 // Timeline d'animation (play/pause + scrub)
 attachTimelineListeners();
 
-// Click sur le canvas (sélection bone via marker)
-state.renderer.domElement.addEventListener('click', onCanvasClick);
+// Click sur le canvas : en mode Props on essaie d'abord de piquer un cage
+// vertex ; sinon on délègue à la sélection de bone via marker.
+state.renderer.domElement.addEventListener('click', (e) => {
+  if (state.propsMode && tryPickCageVertex(e)) return;
+  onCanvasClick(e);
+});
 
 function exitAllSpecialModes() {
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
   if (state.ikMode) exitIKMode();
+  if (state.propsMode) exitPropsMode();
 }
 
 // Toggles de mode (mutuellement exclusifs)
@@ -101,6 +108,12 @@ document.getElementById('mode-ik-btn').addEventListener('click', () => {
   exitAllSpecialModes();
   enterIKMode();
 });
+document.getElementById('mode-props-btn').addEventListener('click', () => {
+  exitAllSpecialModes();
+  enterPropsMode();
+});
+attachPropsListeners();
+attachCageListeners();
 document.getElementById('reset-joints-btn').addEventListener('click', resetAllJoints);
 
 document.getElementById('smooth-weights-btn').addEventListener('click', () => {

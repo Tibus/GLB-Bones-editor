@@ -40,6 +40,7 @@
     <button id="mode-ik-btn" class="mode-btn">🎯 IK</button>
     <button id="mode-paint-btn" class="mode-btn">🎨 Paint</button>
     <button id="mode-joints-btn" class="mode-btn">🔧 Joints</button>
+    <button id="mode-props-btn" class="mode-btn">📦 Props</button>
   </div>
 
   <div id="bone-view-toggle">
@@ -292,6 +293,54 @@
       <input type="checkbox" id="ik-auto-balance">
       <span><strong>Auto balance</strong> — ajuste le pelvis pour garder le centre de masse au-dessus des pieds</span>
     </label>
+  </div>
+
+  <div id="props-controls">
+    <h4>📦 Props</h4>
+
+    <label id="prop-input-label" class="file-input-label">
+      ➕ Importer un prop (.glb)
+      <input type="file" id="prop-input" class="file-input" accept=".glb,.gltf">
+    </label>
+
+    <div id="props-list">
+      <div id="no-props-msg" style="color:#888;">Aucun prop importé</div>
+    </div>
+
+    <div id="prop-transform-controls" style="display:none;">
+      <div id="prop-selected-name">—</div>
+      <div id="prop-gizmo-mode-toggle">
+        <button id="prop-gizmo-translate" class="mode-btn active">↔️ Translate</button>
+        <button id="prop-gizmo-rotate"   class="mode-btn">🔄 Rotate</button>
+        <button id="prop-gizmo-scale"    class="mode-btn">⇲ Scale</button>
+      </div>
+      <button id="prop-delete-btn" class="control-btn">🗑️ Supprimer prop</button>
+
+      <div id="prop-bind-section">
+        <div id="prop-bind-title">🦴 Lier au squelette</div>
+        <select id="prop-bind-bone" class="prop-bind-select"></select>
+        <button id="prop-bind-btn" class="control-btn">🔗 Lier au bone sélectionné</button>
+        <button id="prop-unbind-btn" class="control-btn" style="display:none;">🔓 Détacher du squelette</button>
+        <div id="prop-bind-hint">
+          Choisis le bone d'attache initial (poids 1.0). Le prop devient skinné.
+          Bascule ensuite en mode 🎨 <strong>Paint</strong> pour redistribuer ses poids — utile pour une armure complète, une cape, etc.
+        </div>
+        <div id="prop-bind-status" style="display:none;"></div>
+      </div>
+
+      <div id="prop-cage-section" style="display:none;">
+        <div id="prop-cage-title">🛡️ Cage de déformation</div>
+        <button id="prop-add-cage-btn" class="control-btn">➕ Ajouter cage cylindrique</button>
+        <div id="prop-cage-actions" style="display:none;">
+          <div id="prop-cage-hint">
+            Cliquez un point vert sur la cage et glissez le gizmo pour déformer le prop.
+          </div>
+          <button id="prop-orient-cage-btn" class="control-btn">↔️ Orienter cage</button>
+          <button id="prop-reset-cage-btn" class="control-btn">🔄 Reset cage</button>
+          <button id="prop-remove-cage-btn" class="control-btn">🗑️ Retirer cage</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="skeleton-legend">

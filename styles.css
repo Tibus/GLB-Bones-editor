@@ -967,3 +967,212 @@ body {
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
+/* Props mode */
+#props-controls {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+#props-controls.visible {
+    display: flex;
+}
+#props-controls h4 {
+    color: #ffd86a;
+    margin-bottom: 5px;
+}
+
+#prop-input-label {
+    background: #4a3a8a;
+    border: none;
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: center;
+    display: block;
+    transition: background 0.2s;
+}
+#prop-input-label:hover {
+    background: #5a4aaa;
+}
+
+#props-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.prop-item {
+    background: #2a2a4a;
+    border: 1px solid transparent;
+    color: white;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+}
+.prop-item:hover {
+    background: #3a3a5a;
+}
+.prop-item.active {
+    background: #4a3a8a;
+    border-color: #8a8aff;
+}
+
+#prop-transform-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: #2a2a4a;
+    border-radius: 6px;
+}
+
+#prop-selected-name {
+    font-weight: 500;
+    color: #ffd86a;
+    text-align: center;
+}
+
+#prop-gizmo-mode-toggle {
+    display: flex;
+    gap: 4px;
+}
+#prop-gizmo-mode-toggle .mode-btn {
+    flex: 1;
+    font-size: 11px;
+    padding: 6px 4px;
+}
+
+#prop-delete-btn {
+    background: #6a3a3a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-delete-btn:hover {
+    background: #8a4a4a;
+}
+
+#prop-bind-section {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#prop-bind-title {
+    font-weight: 500;
+    color: #ffd86a;
+    font-size: 12px;
+}
+.prop-bind-select {
+    background: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    color: white;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    width: 100%;
+}
+#prop-bind-hint {
+    padding: 8px;
+    background: rgba(255, 216, 106, 0.10);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.5;
+}
+#prop-bind-status {
+    padding: 8px;
+    background: rgba(68, 255, 136, 0.10);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #66ff99;
+    line-height: 1.5;
+}
+#prop-bind-btn {
+    background: #2a6a4a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-bind-btn:hover {
+    background: #3a8a5a;
+}
+#prop-unbind-btn {
+    background: #6a3a3a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-unbind-btn:hover {
+    background: #8a4a4a;
+}
+
+#prop-cage-section {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+#prop-cage-title {
+    font-weight: 500;
+    color: #66ff99;
+    font-size: 12px;
+}
+#prop-cage-hint {
+    padding: 8px;
+    background: rgba(68, 255, 136, 0.10);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+    line-height: 1.5;
+}
+#prop-cage-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#prop-add-cage-btn {
+    background: #2a6a4a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-add-cage-btn:hover {
+    background: #3a8a5a;
+}
+#prop-orient-cage-btn {
+    background: #4a3a8a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-orient-cage-btn:hover {
+    background: #5a4aaa;
+}
+#prop-orient-cage-btn.active {
+    background: #6a4ada;
+    box-shadow: 0 0 0 2px #ffaa44 inset;
+}
+#prop-reset-cage-btn {
+    background: #4a4a6a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-reset-cage-btn:hover {
+    background: #5a5a8a;
+}
+#prop-remove-cage-btn {
+    background: #6a3a3a;
+    padding: 8px;
+    font-size: 12px;
+}
+#prop-remove-cage-btn:hover {
+    background: #8a4a4a;
+}
+

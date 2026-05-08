@@ -326,6 +326,8 @@ export function onCanvasClick(event) {
   // déclencher onCanvasClick ferait un second appel à selectBone qui cyclerait
   // sur les bones empilés (effet "double action" indésirable au release).
   if (state.jointEditMode) return;
+  // En mode props, le canvas click ne doit pas voler le gizmo aux props.
+  if (state.propsMode) return;
 
   const rect = state.renderer.domElement.getBoundingClientRect();
   state.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;

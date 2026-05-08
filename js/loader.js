@@ -8,6 +8,8 @@ import { updateInfo, setFbxInputEnabled } from './ui.js';
 import { exitWeightPaintMode } from './weight-paint.js';
 import { exitJointEditMode } from './joint-edit.js';
 import { exitIKMode } from './ik.js';
+import { exitPropsMode, clearAllProps, registerImportedProp, setAllCagesVisible } from './props.js';
+import { rebuildCageFromImported } from './cage.js';
 import { clearHistory } from './history.js';
 import { createAllBoneMarkers, updateBoneList } from './bones.js';
 import { updateAnimationsList, playAnimation } from './animation.js';
@@ -23,6 +25,8 @@ export function loadPrincipal(url, filename) {
   if (state.weightPaintMode) exitWeightPaintMode();
   if (state.jointEditMode) exitJointEditMode();
   if (state.ikMode) exitIKMode();
+  if (state.propsMode) exitPropsMode();
+  clearAllProps();
   clearHistory();
 
   // Dispose le modèle précédent
@@ -146,7 +150,19 @@ export function loadPrincipal(url, filename) {
 function manageCurrentModelAfterLoad() {
   state.skinnedMeshes.length = 0;
 
+  // Pré-collecte des sous-arbres "props" (importés depuis un GLB précédemment
+  // exporté). On ne les inclut pas dans la collecte de bones/skinned meshes.
+  const propRoots = [];
+  state.currentModel.traverse((c) => {
+    if (c.userData?.glbBonesEditor?.kind === 'prop') propRoots.push(c);
+  });
+  const propDescendantUuids = new Set();
+  for (const root of propRoots) {
+    root.traverse((c) => propDescendantUuids.add(c.uuid));
+  }
+
   state.currentModel.traverse((child) => {
+    if (propDescendantUuids.has(child.uuid)) return;
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
@@ -214,6 +230,127 @@ function manageCurrentModelAfterLoad() {
     state.skeletonHelper.visible = state.skeletonVisible;
     state.scene.add(state.skeletonHelper);
   }
+
+  // Extrait les props (sous-arbres marqués lors d'un export précédent) :
+  // - prop libre → state.scene.attach (sort de currentModel, préserve world)
+  // - prop lié à un bone → on le laisse parenté au bone (ou on le rattache
+  //   par nom si le parent n'est pas exactement un Bone à cause du round-trip).
+  // Puis on cherche une cage à reconstruire à l'intérieur de chaque prop.
+  for (const propRoot of propRoots) {
+    const ud = propRoot.userData?.glbBonesEditor || {};
+    const name = ud.name || propRoot.name || 'Prop';
+    const boundToBoneName = ud.boundToBone || null;
+
+    // Détecte mode skinné : SkinnedMesh dans le subtree → le squelette pilote
+    // déjà la transformation, on ne re-parente PAS à un bone.
+    let hasSkinned = false;
+    propRoot.traverse((c) => { if (c.isSkinnedMesh) hasSkinned = true; });
+
+    let bindingBone = null;
+    if (!hasSkinned) {
+      // Mode rigide (legacy) : re-parenter à un bone si applicable
+      if (propRoot.parent?.isBone) {
+        bindingBone = propRoot.parent;
+      } else if (boundToBoneName) {
+        const byName = state.bonesByName.get(boundToBoneName);
+        if (byName) {
+          byName.attach(propRoot);
+          bindingBone = byName;
+        }
+      }
+    }
+    if (!bindingBone) {
+      state.scene.attach(propRoot);
+    }
+
+    const propEntry = registerImportedProp(propRoot, name);
+
+    // Si le subtree contient des SkinnedMesh (cas d'un prop "lié au squelette"
+    // exporté précédemment), les ajouter à state.skinnedMeshes pour que le
+    // weight paint les voie comme n'importe quel mesh skinné du corps.
+    const skinnedInProp = [];
+    propRoot.traverse((c) => { if (c.isSkinnedMesh) skinnedInProp.push(c); });
+    if (skinnedInProp.length > 0) {
+      for (const sm of skinnedInProp) {
+        if (!state.skinnedMeshes.includes(sm)) state.skinnedMeshes.push(sm);
+      }
+      propEntry.binding = {
+        mode: 'skinned',
+        skinnedMeshes: skinnedInProp,
+        boneName: boundToBoneName || null,
+      };
+    } else if (bindingBone) {
+      propEntry.binding = { mode: 'rigid', boneName: bindingBone.name };
+    }
+
+    // Détection cage : un Mesh OU LineSegments (GLTFExporter convertit notre
+    // cage Mesh wireframe en topologie LINES → re-importé en LineSegments).
+    // Plusieurs heuristiques en cascade.
+    const isCageCandidate = (c) => {
+      if (c === propRoot) return false;
+      if (!c.geometry?.attributes?.position) return false;
+      return c.isMesh || c.isLineSegments || c.isLine;
+    };
+
+    let cageMeshFound = null;
+    let cageRestArray = null;
+
+    // Pass 1 : userData sur l'objet lui-même
+    propRoot.traverse((c) => {
+      if (cageMeshFound) return;
+      if (!isCageCandidate(c)) return;
+      const ud = c.userData?.glbBonesEditor;
+      if (ud?.kind === 'cage') {
+        cageMeshFound = c;
+        cageRestArray = ud.rest || null;
+      }
+    });
+
+    // Pass 2 : userData sur parent (Group)
+    if (!cageMeshFound) {
+      propRoot.traverse((c) => {
+        if (cageMeshFound) return;
+        if (c === propRoot || c.geometry) return;
+        const ud = c.userData?.glbBonesEditor;
+        if (ud?.kind !== 'cage') return;
+        for (const child of c.children) {
+          if (isCageCandidate(child)) {
+            cageMeshFound = child;
+            cageRestArray = ud.rest || null;
+            break;
+          }
+        }
+      });
+    }
+
+    // Pass 3 : heuristique 40-vertices
+    if (!cageMeshFound) {
+      propRoot.traverse((c) => {
+        if (cageMeshFound) return;
+        if (!isCageCandidate(c)) return;
+        if (c.geometry.attributes.position.count === 40) {
+          cageMeshFound = c;
+          console.warn('[cage] détecté via heuristique 40-verts (userData manquant)');
+        }
+      });
+    }
+
+    if (cageMeshFound) {
+      if (!cageRestArray) {
+        // Pas de rest data trouvée → fallback : on utilise les positions actuelles
+        // comme rest (la déformation antérieure est perdue, mais la cage redevient
+        // éditable). À la première édition, le binding marchera correctement.
+        const live = cageMeshFound.geometry.attributes.position.array;
+        cageRestArray = Array.from(live);
+        console.warn('[cage] rest data perdue dans le round-trip GLB → fallback : positions actuelles utilisées comme rest. La déformation antérieure n\'est pas restaurée.');
+      }
+      cageMeshFound.userData.glbBonesEditor = { kind: 'cage', rest: cageRestArray };
+      rebuildCageFromImported(propEntry, cageMeshFound);
+    }
+  }
+
+  // Cages reconstruites : visibles uniquement si on est en mode Props.
+  setAllCagesVisible(!!state.propsMode);
 
   createAllBoneMarkers();
   state.mixer = new THREE.AnimationMixer(state.currentModel);
