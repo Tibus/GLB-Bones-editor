@@ -70,9 +70,6 @@ export const ikChains = {
   },
   "Pelvis": {
     type: 'translate', bone: "Hip",
-    // Marker placé devant en world (Z+) — le rig a le Hip en biais en local.
-    // Au drag, l'aim sur l'axe Z local va orienter le Hip vers ce point.
-    orientationPole: { axis: 'x', distance: 0.4, worldDirection: { x: 1, y: 0, z: 0 } },
   },
 };
 window.ikChains = ikChains;
